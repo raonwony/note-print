@@ -463,7 +463,7 @@ function applyView() {
   frameEl.style.width = (doc.page.w + 2 * b) * p + 'px'; frameEl.style.height = (doc.page.h + 2 * b) * p + 'px';
   pageEl.style.left = b * p + 'px'; pageEl.style.top = b * p + 'px';
   pageEl.style.width = doc.page.w * p + 'px'; pageEl.style.height = doc.page.h * p + 'px';
-  $('#sizeInfo').textContent = `${doc.page.w} × ${doc.page.h} mm (도련 ${doc.bleed}mm)`;
+  $('#sizeInfo').textContent = `재단 크기 ${doc.page.w} × ${doc.page.h} mm · 도련 ${doc.bleed}mm(바깥)`;
   drawRulers(); renderSelection();
 }
 function renderBackdrop() {
@@ -481,9 +481,9 @@ function renderGuides() { // 재단선·도련·안전선 안내선
   const svg = svgEl('svg', { class: 'guides', viewBox: `${-b} ${-b} ${w + 2 * b} ${ph + 2 * b}`, preserveAspectRatio: 'none' });
   svg.style.cssText = `left:${U(-b)};top:${U(-b)};width:${U(w + 2 * b)};height:${U(ph + 2 * b)}`;
   const rect = (x, y, ww, hh, stroke, dash, sw = 1) => svg.append(svgEl('rect', { x, y, width: ww, height: hh, fill: 'none', stroke, 'stroke-width': sw, 'vector-effect': 'non-scaling-stroke', ...(dash ? { 'stroke-dasharray': '6 4' } : {}) }));
-  if (b > 0) rect(-b, -b, w + 2 * b, ph + 2 * b, '#e5484d', false, 1.6); // 도련 끝(바깥 빨간 실선)
-  rect(0, 0, w, ph, '#111', false, 1.3); // 노트 크기 = 자르는 자리(검정 실선)
-  if (sf > 0) rect(sf, sf, w - 2 * sf, ph - 2 * sf, '#2b8ad6', true);
+  // 흰 쪽 = 재단 크기(자르는 자리), 그 바깥 분홍 띠 = 도련. 쪽 가장자리가 곧 재단선이라 따로 선을 긋지 않아요.
+  if (b > 0) rect(-b, -b, w + 2 * b, ph + 2 * b, '#e5484d', false, 1.2); // 도련 끝(바깥 빨간 실선)
+  if (sf > 0) rect(sf, sf, w - 2 * sf, ph - 2 * sf, '#1f6fd0', true, 2); // 안전선(파란 점선)
   if (doc.holes.on && doc.kind !== 'bound') { // 링 구멍 가이드: 홀수 쪽=왼쪽 가장자리, 짝수 쪽=오른쪽 가장자리, 세로는 가운데 기준 대칭
     const hl = doc.holes, left = ui.editMaster || ui.pageIdx % 2 === 0, hx = left ? hl.edge : w - hl.edge, span = hl.gaps.reduce((a, c) => a + c, 0);
     let y = (ph - span) / 2;
@@ -1342,8 +1342,8 @@ function renderPaperBox() {
       }) : null)));
   b.append(row('도련', stepper(doc.bleed, { min: 0, max: 10, step: 1 }, v => { mutate(() => { doc.bleed = v; }); zoom = 1; renderAll(); }), h('span', { class: 'unit' }, 'mm')));
   b.append(row('안전 여백', stepper(doc.safe, { min: 0, max: 20, step: 1 }, v => { mutate(() => { doc.safe = v; }); renderGuides(); }), h('span', { class: 'unit' }, 'mm')));
-  b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: ui.guides, onchange: e => { ui.guides = e.target.checked; renderGuides(); } }), '재단선·도련·안전선 보기 (인쇄되지 않아요)')));
-  b.append(h('p', { class: 'hint' }, '검은 선 = 재단선(여기를 자름) · 빨간 점선 = 도련 끝(배경은 여기까지) · 파란 점선 = 안전선(중요한 글자는 안쪽에). 목록에 없는 크기(예: 슬림)는 mm로 적고 “이 크기 저장”을 누르세요.'));
+  b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: ui.guides, onchange: e => { ui.guides = e.target.checked; renderGuides(); } }), '도련·안전선 보기 (인쇄되지 않아요)')));
+  b.append(h('p', { class: 'hint' }, '위 크기는 최종 재단 크기예요(흰 쪽 = 자르는 자리). 도련은 그 바깥으로 따로 더해지는 분홍 띠(재단 때 잘려 나가는 여유, 배경·그림은 여기까지 채우기)이고, 파란 점선 = 안전선(중요한 글자는 안쪽에)이에요. 목록에 없는 크기(예: 슬림)는 mm로 적고 “이 크기 저장”을 누르세요.'));
 }
 
 function renderMasterBox() {
