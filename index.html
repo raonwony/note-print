@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>노트 인쇄</title>
+<meta name="theme-color" content="#2f6f5e">
+<meta name="description" content="모눈 바탕 위에 디자인해서 인쇄하거나 인쇄소용 PDF로 내보내는 노트 만들기">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="노트 인쇄">
+<link rel="stylesheet" href="style.css">
+<style id="pageRule"></style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <h1>노트 인쇄</h1>
+    <div class="top-btns">
+      <button id="undoBtn" type="button" title="방금 한 일 취소 (Cmd+Z)">↶ 되돌리기</button>
+      <button id="redoBtn" type="button" title="다시 하기 (Shift+Cmd+Z)">다시 ↷</button>
+      <button id="fileNewBtn" type="button">새 파일</button>
+      <button id="myBtn" type="button">내 노트</button>
+      <button id="newBtn" type="button">비우기</button>
+      <button id="printBtn" type="button">집에서 인쇄</button>
+      <button id="pdfBtn" type="button" class="primary">인쇄소용 PDF</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage">
+      <div class="zoombar">
+        <button id="zoomOut" type="button" aria-label="작게">－</button>
+        <button id="zoomFit" type="button">화면에 맞춤</button>
+        <button id="zoomIn" type="button" aria-label="크게">＋</button>
+        <span class="vsep"></span>
+        <button id="tgRuler" type="button" class="tog on" title="눈금자 보이기">눈금자</button>
+        <button id="tgGuides" type="button" class="tog on" title="가이드선 보이기">가이드선</button>
+        <button id="tgSmart" type="button" class="tog on" title="옮길 때 다른 것에 맞춰 주는 보조선">스마트 가이드</button>
+        <button id="tgGrid" type="button" class="tog on" title="모눈 칸에 붙이기">모눈에 붙이기</button>
+        <span id="sizeInfo" class="muted"></span>
+      </div>
+      <div class="insertbar" id="insertBar" aria-label="넣기">
+        <span class="ilabel">넣기</span>
+        <button type="button" data-add="text">글자</button>
+        <button type="button" data-add="line">선·화살표</button>
+        <button type="button" data-add="rect">네모</button>
+        <button type="button" data-add="round">둥근 네모</button>
+        <button type="button" data-add="ellipse">타원·원</button>
+        <button type="button" data-add="triangle">삼각형</button>
+        <button type="button" data-add="star">별</button>
+        <button type="button" data-add="path">✎ 자유곡선</button>
+        <button type="button" data-add="table">표</button>
+        <button type="button" data-add="image">이미지</button>
+        <input type="file" id="imgFile" accept="image/png,image/jpeg,.jpg,.jpeg,.png" multiple hidden>
+      </div>
+      <div id="countBanner" class="banner warnbn" hidden></div>
+      <div id="masterBanner" class="banner" hidden>
+        <span id="masterBannerText"></span>
+        <button id="masterExit" type="button" class="primary">쪽으로 돌아가기</button>
+      </div>
+      <div class="rulerwrap" id="rulerwrap">
+        <div class="rcorner" id="rcorner">mm</div>
+        <canvas id="rulerTop" class="rtop"></canvas>
+        <canvas id="rulerLeft" class="rleft"></canvas>
+        <div id="stageScroll">
+          <div id="pageBox">
+            <div id="bleedFrame">
+              <div id="page">
+                <div id="layerM"></div>
+                <div id="layerP"></div>
+                <div id="layerSel"></div>
+                <svg id="smartLayer" class="smart"></svg>
+              </div>
+              <svg id="guideLayer" class="gl"></svg>
+            </div>
+          </div>
+          <div id="emptyHint" class="empty-hint">위쪽 <b>넣기</b> 띠에서<br>글자 · 선 · 도형 · 표 · 이미지를 눌러 디자인해 보세요</div>
+        </div>
+      </div>
+      <div class="pagebar">
+        <button id="pgAdd" type="button">＋ 쪽 추가</button>
+        <button id="pgDup" type="button">복제</button>
+        <button id="pgDel" type="button">삭제</button>
+        <button id="pgLeft" type="button" aria-label="앞으로">◀</button>
+        <button id="pgRight" type="button" aria-label="뒤로">▶</button>
+        <span id="pageLabel" class="muted"></span>
+      </div>
+      <div id="thumbs" class="thumbs"></div>
+    </section>
+
+    <aside class="side" id="side">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="doc" class="on">문서 · 쪽</button>
+        <button type="button" role="tab" data-tab="obj">개체</button>
+        <button type="button" role="tab" data-tab="color">색</button>
+      </div>
+      <div class="tabpane" id="tabDoc">
+        <details open>
+          <summary>쪽 목록 (펼침면)</summary>
+          <div class="box" id="pagesBox"></div>
+        </details>
+        <details open>
+          <summary>노트 종류 · 규칙</summary>
+          <div class="box" id="kindBox"></div>
+        </details>
+        <details open>
+          <summary>용지 크기 · 도련</summary>
+          <div class="box" id="paperBox"></div>
+        </details>
+        <details open>
+          <summary>쪽 번호</summary>
+          <div class="box" id="numBox"></div>
+        </details>
+        <details open>
+          <summary>링 구멍 가이드 (바인더)</summary>
+          <div class="box" id="holeBox"></div>
+        </details>
+        <details open>
+          <summary>바탕 (모눈 · 반복되는 것)</summary>
+          <div class="box" id="masterBox"></div>
+        </details>
+      </div>
+      <div class="tabpane" id="tabObj" hidden>
+        <div class="box" id="propBox"></div>
+      </div>
+      <div class="tabpane" id="tabColor" hidden>
+        <div class="box" id="colorBox"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- 집에서 인쇄 창 -->
+<div id="printModal" class="modal" hidden>
+  <div class="card print-card">
+    <div class="card-head">
+      <h2>집에서 인쇄하기</h2>
+      <button type="button" id="printClose" class="ghost">닫기 ✕</button>
+    </div>
+    <div class="print-opts" id="printOpts"></div>
+    <p id="layoutInfo" class="info"></p>
+    <div class="pv" id="pv"><div id="sheets"></div></div>
+    <div class="card-foot">
+      <p class="muted small" id="printTip"></p>
+      <button type="button" id="doPrint" class="primary big">인쇄 / PDF로 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 인쇄소용 PDF 창 -->
+<div id="pdfModal" class="modal" hidden>
+  <div class="card">
+    <div class="card-head">
+      <h2>인쇄소용 PDF 내보내기</h2>
+      <button type="button" id="pdfClose" class="ghost">닫기 ✕</button>
+    </div>
+    <div class="print-opts" id="pdfOpts"></div>
+    <div class="help">
+      <b>인쇄소에 이렇게 전달하세요</b>
+      <ul>
+        <li>PDF 한 쪽이 노트 한 쪽입니다 (낱장 순서 그대로, 양면이면 홀수=앞면·짝수=뒷면)</li>
+        <li>재단 크기와 도련(3mm)이 파일에 기록돼 있고, 글꼴은 파일 안에 포함돼 있습니다</li>
+        <li>색은 CMYK, 검정은 K 100% 한 가지입니다 (1도·2도 별색 인쇄는 인쇄소와 상의)</li>
+      </ul>
+    </div>
+    <div class="card-foot">
+      <p class="muted small">만드는 데 몇 초 걸려요. 한 번 만들면 파일로 저장됩니다.</p>
+      <button type="button" id="doPdf" class="primary big">PDF 만들기</button>
+    </div>
+    <div id="pdfResult"></div>
+  </div>
+</div>
+
+<!-- 새 파일 만들기 창 -->
+<div id="newModal" class="modal" hidden>
+  <div class="card newcard">
+    <div class="card-head">
+      <h2>새 파일 만들기</h2>
+      <button type="button" id="newClose" class="ghost">닫기 ✕</button>
+    </div>
+    <div id="newBody"></div>
+    <div class="card-foot">
+      <p class="muted small">만든 뒤에도 오른쪽 “문서·쪽” 탭에서 모두 바꿀 수 있어요.</p>
+      <button type="button" id="newOk" class="primary big">만들기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 내 노트 창 -->
+<div id="myModal" class="modal" hidden>
+  <div class="card">
+    <div class="card-head">
+      <h2>내 노트</h2>
+      <button type="button" id="myClose" class="ghost">닫기 ✕</button>
+    </div>
+    <div class="my-actions">
+      <button type="button" id="saveCur" class="primary">지금 것 저장하기</button>
+      <button type="button" id="exportBtn">파일로 내보내기</button>
+      <button type="button" id="importBtn">파일에서 가져오기</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+    <ul id="myList" class="my-list"></ul>
+    <p class="muted small">저장한 노트는 이 기기의 이 브라우저 안에 보관됩니다. 다른 기기로 옮기거나 백업하려면 “파일로 내보내기”를 쓰세요.</p>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<script src="core.js"></script>
+<script src="pdf.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
