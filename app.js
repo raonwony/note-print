@@ -187,7 +187,7 @@ function normalize(s) {
 let doc = normalize(lsGet(LS.cur, null) || lsGet(LS.cur1, null));
 const ui = { tab: 'doc', tabManual: false, pageIdx: 0, editMaster: false, masterId: null, guides: true, rulers: true, userGuides: true, smart: true, guideScope: 'page', alignTo: 'sel', draw: false, guideColor: '#14b8d4', divArea: 'page', divMargin: 0 };
 let selIds = [], selGuide = null, extraGuides = [], editingId = null, editingCell = null, cellSel = null, editBefore = null, zoom = 1;
-let clip = null, fmt = null, pasteN = 0;
+let clip = null, fmt = null, pasteN = 0, textFmt = null, editFmt = null; // textFmt: 방금 복사한 글씨와 그 서식 / editFmt: 지금 고치는 곳에 붙인 서식(고치기를 마칠 때 적용)
 const els = new Map();
 
 const curPage = () => doc.pages[ui.pageIdx];
@@ -816,9 +816,7 @@ scroller.addEventListener('pointerdown', e => {
     if (it && !it.lock) {
       if (it.type === 'table' && editingId == null) {
         if (selIds.length === 1 && selIds[0] === id) { startCellSel(e, it); return; }
-        startItemDrag(e, id); // 처음 누른 표: 표를 고르고(끌면 옮기고), 누른 칸도 함께 골라 둠 → 같은 칸을 한 번 더 누르면 글자 쓰기
-        const { r, c } = tableCellAt(it, toMM(e)), o = NP.tableGeom(it).owner[r][c];
-        cellSel = { id: it.id, r1: o.r, c1: o.c, r2: o.r + o.rs - 1, c2: o.c + o.cs - 1 }; renderSelection(); renderPropBox();
+        startItemDrag(e, id); // 처음 누른 표: 표 전체를 고르고(끌면 옮기고), 칸은 고르지 않음 → 글꼴 등을 바꾸면 표 전체에 적용. 그다음부터 누르거나 끌면 칸을 골라요
         return;
       }
       startItemDrag(e, id); return;
@@ -1111,7 +1109,8 @@ function endEdit(skipRender) {
     if (tt) {
       tt.onblur = null; tt.onkeydown = null; tt.removeAttribute('contenteditable');
       const t = tt.innerText.replace(/\n$/, '');
-      if (it && t !== NP.cellStyle(it, key).text) { undoStack.push(editBefore); redoStack.length = 0; lastKey = ''; updateUndo(); it.cells[key] = { ...NP.cellStyle(it, key), text: t }; save(); }
+      const fp = editFmt; editFmt = null;
+      if (it && (t !== NP.cellStyle(it, key).text || fp)) { undoStack.push(editBefore); redoStack.length = 0; lastKey = ''; updateUndo(); const st = { ...NP.cellStyle(it, key), text: t, ...(fp || {}) }; if (st.bold && !(FONTS[st.font] || FONTS.pretendard).files[700]) st.bold = false; it.cells[key] = st; save(); }
     }
     if (it) { el._sig = null; syncItemEl(el, it, ui.pageIdx + 1, gridStep()); }
     editBefore = null; renderSelection(); renderPropBox(); return;
@@ -1120,8 +1119,8 @@ function endEdit(skipRender) {
   b.onblur = null; b.onkeydown = null;
   b.removeAttribute('contenteditable');
   if (it) {
-    const t = b.innerText.replace(/\n$/, '');
-    if (t !== it.text) { undoStack.push(editBefore); redoStack.length = 0; lastKey = ''; updateUndo(); it.text = t; save(); }
+    const t = b.innerText.replace(/\n$/, ''), fp = editFmt; editFmt = null;
+    if (t !== it.text || fp) { undoStack.push(editBefore); redoStack.length = 0; lastKey = ''; updateUndo(); it.text = t; if (fp) { Object.assign(it, fp); if (it.bold && !(FONTS[it.font] || FONTS.pretendard).files[700]) it.bold = false; } save(); }
     syncItemEl(el, it, ui.pageIdx + 1, gridStep());
   }
   editBefore = null;
@@ -1273,6 +1272,20 @@ function pasteFormat() {
   refreshItems(items.map(i => i.id)); renderPropBox();
 }
 function selectAll() { select(ctxItems().filter(i => !i.hide && !i.lock).map(i => i.id)); }
+
+/* ---------- 글자 일부를 복사해 다른 곳에 붙이면 글씨 서식(글꼴·크기·굵게·색)도 함께 ---------- */
+const editSrc = () => { // 지금 고치고 있는 글자 상자·표 칸과 그 서식
+  if (editingId == null) return null; const it = findItem(editingId); if (!it) return null;
+  const st = editingCell != null ? NP.cellStyle(it, editingCell) : it;
+  return { from: editingId + ':' + (editingCell == null ? '' : editingCell), props: { font: st.font, pt: st.pt, bold: !!st.bold, color: st.color } };
+};
+const onTextCopy = () => { const src = editSrc(), text = getSelection().toString(); if (src && text) textFmt = { text, from: src.from, props: src.props }; };
+document.addEventListener('copy', onTextCopy); document.addEventListener('cut', onTextCopy);
+document.addEventListener('paste', e => {
+  const src = editSrc(); if (!src || !textFmt || !e.clipboardData) return;
+  if (e.clipboardData.getData('text/plain') !== textFmt.text || src.from === textFmt.from) return; // 우리 쪽에서 복사한 글씨를, 다른 곳에 붙일 때만
+  editFmt = { ...textFmt.props }; toast('글씨 서식(글꼴·크기·굵기·색)도 함께 붙였어요 — 고치기를 마치면 적용돼요');
+});
 
 /* ---------- 키보드 ---------- */
 document.addEventListener('keydown', e => {
@@ -1727,7 +1740,9 @@ function renderItemProps(b, items) {
     b.append(row('선 굵기', thickSel())); b.append(row('선 모양', dashSeg())); b.append(color('선 색'));
     b.append(row('바깥 테두리', seg([[1, '있음'], [0, '없음']], it.outer ? 1 : 0, v => upd(x => { x.outer = !!v; }))));
     const keys = rg ? rangeKeys(it, rg) : g.cells.map(c => c.key), cs = NP.cellStyle(it, keys[0] || '0,0'), f = FONTS[cs.font] || FONTS.pretendard;
-    b.append(h('div', { class: 'sub2' }, rg ? '선택한 칸의 서식' : '칸 서식 (칸을 고르지 않으면 표 전체에 적용)'));
+    b.append(h('div', { class: 'sub2' }, rg ? `선택한 칸 ${(rg.r2 - rg.r1 + 1) * (rg.c2 - rg.c1 + 1) > 1 ? '(여러 칸)' : '1개'}의 서식` : '표 전체의 서식 (모든 칸에 적용돼요)'));
+    b.append(h('p', { class: 'hint' }, rg ? '칸 위에서 끌면 여러 칸을 한 번에 고를 수 있어요. 표 전체를 바꾸려면 아래 “표 전체 고르기”를 누르세요.' : '바꾸고 싶은 칸을 누르거나, 칸 위에서 쭉 끌어서 여러 칸을 고르면 그 칸들만 바뀌어요.'));
+    if (rg) b.append(h('div', { class: 'btnrow' }, btn('표 전체 고르기', () => { cellSel = null; renderSelection(); renderPropBox(); })));
     b.append(row('글꼴', h('select', { onchange: e => cellPatch(it, { font: e.target.value }) }, Object.entries(FONTS).map(([k, v]) => h('option', { value: k, selected: cs.font === k }, v.label)))));
     b.append(row('글자 크기', stepper(cs.pt, { min: 4, max: 80, step: 1 }, v => cellPatch(it, { pt: v })), h('span', { class: 'unit' }, 'pt')));
     b.append(row('모양', f.files[700] ? btn('굵게', () => cellPatch(it, { bold: !cs.bold }), { class: cs.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '굵게 없음'),
