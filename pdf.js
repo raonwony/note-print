@@ -137,18 +137,27 @@
         return;
       }
       // 나머지: 물건의 가운데를 기준으로 돌려서 그린다 (화면의 회전과 같은 방향)
-      const w = it.w; let hh = it.h, lines = null, lh = 0, f = null, Smm = 0, asc = 0, desc = 0, measure = null;
+      const w = it.w; let hh = it.h, lines = null, lh = 0, f = null, Smm = 0, asc = 0, desc = 0, measure = null, rich = null;
       if (it.type === 'text') {
         const text = NP.resolveText(it.text, pageNo, total);
         if (!text.trim()) return;
         f = await getFont(it.font, it.bold);
         for (const ch of text) { const cp = ch.codePointAt(0); if (cp > 32 && !f.fk.hasGlyphForCodePoint(cp)) (missing[f.key] = missing[f.key] || new Set()).add(ch); }
         measure = s => f.pf.widthOfTextAtSize(s, it.pt) / K; // mm
-        lines = NP.wrapText(text, w, measure);
         Smm = it.pt * NP.MM_PT; const upm = f.fk.unitsPerEm;
         asc = f.fk.ascent / upm; desc = -f.fk.descent / upm;
-        lh = it.lh > 0 ? it.lh * gs : 1.35 * Smm;
-        hh = lines.length * lh;
+        if ((it.spans && it.spans.length) || it.align === 'justify' || it.align === 'distribute') {
+          // 글자 일부 크기·색 / 양쪽 맞춤 / 균등 배분: 글자마다 폭을 재서 줄을 나눔 (화면과 같은 규칙)
+          const rr = NP.resolveChars([...it.text], NP.charStyles(it, [...it.text].length), pageNo, total), chars = rr.chars, styles = rr.styles;
+          const cw = chars.map((ch, i) => f.pf.widthOfTextAtSize(ch, styles[i].pt) / K), L = NP.layoutChars(chars, w, i => cw[i]);
+          for (const ln of L) { let mx = it.pt; for (let j = ln.a; j < ln.b; j++) mx = Math.max(mx, styles[j].pt); ln.pt = mx; ln.lh = it.lh > 0 ? it.lh * gs : 1.35 * mx * NP.MM_PT; }
+          rich = { chars, styles, cw, L };
+          hh = L.reduce((t, ln) => t + ln.lh, 0);
+        } else {
+          lines = NP.wrapText(text, w, measure);
+          lh = it.lh > 0 ? it.lh * gs : 1.35 * Smm;
+          hh = lines.length * lh;
+        }
         if (pageNo && (it.x < safe.l || it.x + w > W - safe.r || it.y < safe.t || it.y + hh > H - safe.b)) safePages.add(pageNo);
       }
       const th = -(it.rot || 0) * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
@@ -203,6 +212,25 @@
           page.pushOperators(pushGraphicsState(), concatTransformationMatrix(w * K, 0, 0, hh * K, LX(0), LY(hh)), drawObject(nm), popGraphicsState());
           if (im.transparent) transparentPages.add(pageNo);
           if (im.dpi < 300 && !lowRes.some(x => x.page === pageNo && x.dpi === Math.round(im.dpi))) lowRes.push({ page: pageNo, dpi: Math.round(im.dpi) });
+        }
+      } else if (it.type === 'text' && rich) {
+        let y0 = 0;
+        for (const ln of rich.L) {
+          const S = ln.pt * NP.MM_PT, base = y0 + (ln.lh - (asc + desc) * S) / 2 + asc * S;
+          let nsp = 0; for (let j = ln.a; j < ln.b; j++) if (rich.chars[j] === ' ') nsp++;
+          const gaps = ln.b - ln.a - 1;
+          const exSp = it.align === 'justify' && !ln.last && nsp > 0 ? (w - ln.w) / nsp : 0, exCh = it.align === 'distribute' && gaps > 0 ? (w - ln.w) / gaps : 0;
+          let x = it.align === 'center' ? (w - ln.w) / 2 : it.align === 'right' ? w - ln.w : 0, run = null;
+          const flush = () => { if (run) { page.drawText(run.t, { x: LX(run.x), y: LY(base), size: run.pt, font: f.pf, color: colorOf(run.color) }); run = null; } };
+          for (let j = ln.a; j < ln.b; j++) {
+            const ch = rich.chars[j], st = rich.styles[j];
+            if (exCh) { flush(); if (ch !== ' ') page.drawText(ch, { x: LX(x), y: LY(base), size: st.pt, font: f.pf, color: colorOf(st.color) }); x += rich.cw[j] + exCh; continue; }
+            if (ch === ' ') { flush(); x += rich.cw[j] + exSp; continue; }
+            if (run && run.pt === st.pt && run.color === st.color) run.t += ch; else { flush(); run = { t: ch, x, pt: st.pt, color: st.color }; }
+            x += rich.cw[j];
+          }
+          flush();
+          y0 += ln.lh;
         }
       } else if (it.type === 'text') {
         lines.forEach((raw, i) => {

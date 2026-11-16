@@ -92,6 +92,48 @@
     return out;
   };
 
+  /* ---------- 글자 일부만 다른 크기·색 (spans) + 양쪽 맞춤·균등 배분 ----------
+     it.spans = [{a, b, pt?, color?}] : it.text 의 글자 번호(a 이상 b 미만) 구간에만 다른 크기·색을 줍니다. */
+  NP.charStyles = (it, n) => { // 글자마다 {pt, color}
+    const arr = Array.from({ length: n }, () => ({ pt: it.pt, color: it.color }));
+    for (const sp of it.spans || []) for (let i = Math.max(0, sp.a); i < Math.min(n, sp.b); i++) { if (sp.pt) arr[i].pt = sp.pt; if (sp.color) arr[i].color = sp.color; }
+    return arr;
+  };
+  NP.resolveChars = (chars, styles, pageNo, total) => { // {쪽}·{전체}를 글자 배열 안에서 바꾸기 (서식은 첫 글자 것)
+    const out = [], st = [];
+    for (let i = 0; i < chars.length; i++) {
+      const two = chars[i] === '{' && chars[i + 1] === '쪽' && chars[i + 2] === '}', all = chars[i] === '{' && chars[i + 1] === '전' && chars[i + 2] === '체' && chars[i + 3] === '}';
+      if (two || all) { for (const d of String(two ? pageNo : total)) { out.push(d); st.push(styles[i]); } i += two ? 2 : 3; continue; }
+      out.push(chars[i]); st.push(styles[i]);
+    }
+    return { chars: out, styles: st };
+  };
+  /* 줄 나누기 (wrapText와 같은 규칙, 글자마다 폭이 달라도 됨). 반환: [{a, b, w, last}] — b는 줄 끝 띄어쓰기를 뺀 끝, w는 그 폭(mm), last는 문단의 마지막 줄 */
+  NP.layoutChars = (chars, maxW, mw) => {
+    const lines = [], n = chars.length, E = 1e-6;
+    const sumW = (a, b) => { let t = 0; for (let j = a; j < b; j++) t += mw(j); return t; };
+    const push = (a, b, last) => { let e = b; while (e > a && chars[e - 1] === ' ') e--; lines.push({ a, b: e, w: sumW(a, e), last: !!last }); };
+    let p = 0;
+    for (;;) {
+      let e = p; while (e < n && chars[e] !== '\n') e++;
+      let ls = p, lw = 0, k = p, has = false; // has: 이 줄에 띄어쓰기 아닌 글자가 있는가
+      while (k < e) {
+        const isSp = chars[k] === ' '; let t = k; while (t < e && (chars[t] === ' ') === isSp) t++;
+        const tw = sumW(k, t);
+        if (isSp) { lw += tw; k = t; continue; }
+        if (lw + tw <= maxW + E) { lw += tw; has = true; k = t; continue; }
+        if (has) { push(ls, k, false); } ls = k; lw = 0; has = false;
+        if (tw <= maxW + E) { lw = tw; has = true; k = t; continue; }
+        for (let j = k; j < t; j++) { const cw = mw(j); if (lw + cw > maxW + E && j > ls) { push(ls, j, false); ls = j; lw = 0; } lw += cw; has = true; }
+        k = t;
+      }
+      push(ls, e, true);
+      if (e >= n) break;
+      p = e + 1;
+    }
+    return lines;
+  };
+
   /* ---------- 도형 윤곽 (화면 SVG와 PDF가 같은 좌표를 씁니다) ---------- */
   const KAPPA = 0.5522847498;
   function smoothPath(pts, closed) { // 점들을 부드러운 곡선(Catmull-Rom → 베지어)으로 잇기

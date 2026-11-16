@@ -51,6 +51,9 @@ button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .thumb.cur{outline:3px solid var(--accent)}
 .thumb .tn{position:absolute;left:0;right:0;bottom:-17px;text-align:center;font-size:12px;color:var(--muted)}
 .thumb.cur .tn{color:var(--accent-d);font-weight:700}
+.thumb.sel{outline:3px solid #2b8ad6}
+.thumb.cur.sel{outline:3px solid #2b8ad6;box-shadow:0 0 0 2px var(--accent) inset}
+.thumb.sel .tn{color:#1f6fd0;font-weight:700}
 .thumb .pgv{pointer-events:none}
 
 .side{width:350px;max-width:44vw;overflow:auto;background:var(--panel);border-left:1px solid var(--line);padding:6px 0 30px}
@@ -303,3 +306,5 @@ input.cname-in{width:96px;border:1px solid var(--line);border-radius:6px;padding
 .savestate.bad{color:#b3361b;font-weight:600}
 
 .brand .ver{font-size:11px;color:var(--muted);margin-left:2px}
+
+.it .body .ln{white-space:pre}

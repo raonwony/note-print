@@ -126,7 +126,12 @@ function normalize(s) {
       const b = { type: it.type, id, color: mc(it.color), rot: normDeg(+it.rot || 0), lock: !!it.lock, hide: !!it.hide, gid: typeof it.gid === 'string' ? it.gid : null, ar: !!it.ar };
       if (it.type === 'text') {
         const font = FONTS[it.font] ? it.font : 'pretendard';
-        Object.assign(b, { x: +it.x || 0, y: +it.y || 0, w: +it.w || 30, pt: +it.pt || 12, text: String(it.text ?? ''), bold: !!it.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right'].includes(it.align) ? it.align : 'left', font, lh: +it.lh || 0 });
+        Object.assign(b, { x: +it.x || 0, y: +it.y || 0, w: +it.w || 30, pt: +it.pt || 12, text: String(it.text ?? ''), bold: !!it.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right', 'justify', 'distribute'].includes(it.align) ? it.align : 'left', font, lh: +it.lh || 0 });
+        { // 글자 일부만 다른 크기·색 (spans)
+          const nc = [...b.text].length;
+          const sp = (Array.isArray(it.spans) ? it.spans : []).map(q => q && ({ a: clamp(Math.round(+q.a) || 0, 0, nc), b: clamp(Math.round(+q.b) || 0, 0, nc), pt: +q.pt > 0 ? clamp(+q.pt, 4, 200) : 0, color: q.color ? mc(q.color) : '' })).filter(q => q && q.b > q.a && (q.pt || q.color)).slice(0, 400).map(q => ({ a: q.a, b: q.b, ...(q.pt ? { pt: q.pt } : {}), ...(q.color ? { color: q.color } : {}) }));
+          if (sp.length) b.spans = sp;
+        }
       } else if (it.type === 'line') {
         let { x1, y1, x2, y2 } = it;
         if (![x1, y1, x2, y2].every(Number.isFinite)) { // 예전 방식(방향+길이) 변환
@@ -353,8 +358,8 @@ function makeItemEl(it, editor, pageNo, gs) {
   return el;
 }
 let svgUid = 0;
-function fillShape(svg, it, W, Hh) {
-  svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
+function fillShape(svg, it, W, Hh, M = 0) {
+  svg.setAttribute('viewBox', `${-M} ${-M} ${W + 2 * M} ${Hh + 2 * M}`);
   svg.textContent = '';
   const stroke = colorRGB(it.color);
   const dashOn = e => { if (it.dash) { const [d, g] = NP.dashOf(it.th); e.setAttribute('stroke-dasharray', `${d} ${g}`); } };
@@ -395,6 +400,63 @@ function renderTableCells(el, it, pageNo) {
     cell.append(t); box.append(cell);
   }
 }
+/* ---- 글자 상자 안 글자 그리기: 일부 글자 크기·색, 양쪽 맞춤, 균등 배분 ---- */
+const _cvx = document.createElement('canvas').getContext('2d'), _cw = new Map();
+let fontEpoch = 0;
+function charMM(ch, font, bold, pt) { // 글자 하나의 폭(mm) — PDF와 같은 글꼴 기준
+  const f = FONTS[font] || FONTS.pretendard, wt = bold && f.files[700] ? 700 : 400, k = font + wt + ch;
+  let u = _cw.get(k);
+  if (u == null) { _cvx.font = `${wt} 100px ${f.css}, sans-serif`; u = _cvx.measureText(ch).width / 100; _cw.set(k, u); }
+  return u * pt * MM_PT;
+}
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { _cw.clear(); fontEpoch++; try { renderItems(); } catch (e) { /* 아직 준비 전 */ } });
+function styledSpan(txt, pt, color, it) { // 기본과 다른 크기·색이 있을 때만 span으로 감쌈
+  const dp = pt !== it.pt, dc = color !== it.color;
+  if (!dp && !dc) return document.createTextNode(txt);
+  const sp = document.createElement('span');
+  if (dp) { sp.dataset.pt = pt; sp.style.fontSize = U(pt * MM_PT); }
+  if (dc) { sp.dataset.c = color; sp.style.color = colorRGB(color); }
+  sp.textContent = txt; return sp;
+}
+function fillRichBody(b, it, resolve, editing) { // 글자 일부 서식이 있는 글 (it: {text, spans, pt, color})
+  b.textContent = '';
+  const chars = [...it.text], st = NP.charStyles(it, chars.length);
+  for (let i = 0; i < chars.length;) {
+    let j = i + 1; while (j < chars.length && st[j].pt === st[i].pt && st[j].color === st[i].color) j++;
+    const run = resolve(chars.slice(i, j).join(''));
+    if (editing) run.split('\n').forEach((part, k) => { if (k) b.append(document.createElement('br')); if (part) b.append(styledSpan(part, st[i].pt, st[i].color, it)); }); // 고치는 중엔 줄바꿈을 <br>로
+    else b.append(styledSpan(run, st[i].pt, st[i].color, it));
+    i = j;
+  }
+  if (editing && (it.text === '' || it.text.endsWith('\n'))) b.append(document.createElement('br')); // 맨 끝 빈 줄이 보이게 하는 자리표시
+}
+function fillDistributeBody(b, it, pageNo) { // 균등 배분: 줄마다 글자 사이를 벌려 상자 폭에 꽉 채움
+  b.textContent = '';
+  const r = NP.resolveChars([...it.text], NP.charStyles(it, [...it.text].length), pageNo, doc.pages.length), chars = r.chars, st = r.styles;
+  const L = NP.layoutChars(chars, it.w, i => charMM(chars[i], it.font, it.bold, st[i].pt));
+  for (const ln of L) {
+    const d = document.createElement('div'); d.className = 'ln';
+    const gaps = ln.b - ln.a - 1, extra = gaps > 0 ? (it.w - ln.w) / gaps : 0;
+    if (extra > 0.001) d.style.letterSpacing = U(extra);
+    if (ln.b === ln.a) d.textContent = '​';
+    for (let i = ln.a; i < ln.b;) { let j = i + 1; while (j < ln.b && st[j].pt === st[i].pt && st[j].color === st[i].color) j++; d.append(styledSpan(chars.slice(i, j).join(''), st[i].pt, st[i].color, it)); i = j; }
+    b.append(d);
+  }
+}
+function renderTextBody(b, it, pageNo) {
+  const total = doc.pages.length;
+  if (it.align === 'distribute') {
+    const sig = JSON.stringify(['d', it.text, it.spans, it.pt, it.font, it.bold, it.w, it.color, pageNo, total, fontEpoch]);
+    if (b._sig !== sig) { b._sig = sig; fillDistributeBody(b, it, pageNo); }
+  } else if (it.spans && it.spans.length) {
+    const sig = JSON.stringify(['r', it.text, it.spans, it.pt, it.color, pageNo, total]);
+    if (b._sig !== sig) { b._sig = sig; fillRichBody(b, it, s => NP.resolveText(s, pageNo, total)); }
+  } else {
+    if (b._sig) { b._sig = null; b.textContent = ''; }
+    const t = NP.resolveText(it.text, pageNo, total);
+    if (b.textContent !== t) b.textContent = t;
+  }
+}
 function syncItemEl(el, it, pageNo, gs) {
   const s = el.style;
   s.display = it.hide ? 'none' : '';
@@ -406,13 +468,11 @@ function syncItemEl(el, it, pageNo, gs) {
     b.style.fontSize = U(it.pt * MM_PT);
     b.style.lineHeight = it.lh > 0 ? U(it.lh * gs) : '1.35';
     b.style.fontWeight = it.bold && f.files[700] ? '700' : '400';
-    b.style.textAlign = it.align;
+    b.style.textAlign = it.align === 'distribute' ? 'left' : it.align;
+    b.style.textAlignLast = it.align === 'justify' ? 'left' : '';
     b.style.fontFamily = `${f.css}, sans-serif`;
     b.style.color = colorRGB(it.color);
-    if (!el.classList.contains('editing')) {
-      const t = NP.resolveText(it.text, pageNo, doc.pages.length);
-      if (b.textContent !== t) b.textContent = t;
-    }
+    if (!el.classList.contains('editing')) renderTextBody(b, it, pageNo);
     return;
   }
   if (it.type === 'image') {
@@ -427,15 +487,16 @@ function syncItemEl(el, it, pageNo, gs) {
     }
     return;
   }
-  const bx = boxOf(it), pad = it.type === 'line' ? 0.01 : 0;
-  s.left = U(bx.x); s.top = U(bx.y); s.width = U(Math.max(bx.w, pad)); s.height = U(Math.max(bx.h, pad));
+  // 선은 가로·세로로 곧으면 상자 높이(너비)가 0이 되어 인쇄할 때 빠져 버려요 → 선 둘레에 여유(M)를 두고 그 안에 그림
+  const bx = boxOf(it), M = it.type === 'line' ? r2(1 + it.th * 4) : 0;
+  s.left = U(bx.x - M); s.top = U(bx.y - M); s.width = U(Math.max(bx.w, 0.01) + 2 * M); s.height = U(Math.max(bx.h, 0.01) + 2 * M);
   s.transform = it.type !== 'line' && it.rot ? `rotate(${it.rot}deg)` : '';
   const sig = it.type === 'line'
     ? JSON.stringify([it.x2 - it.x1, it.y2 - it.y1, it.th, it.dash, it.color, it.ah, it.at, doc.colors])
     : JSON.stringify({ ...it, x: 0, y: 0, rot: 0, lock: 0, hide: 0, gid: 0, id: 0, _c: doc.colors, _p: it.type === 'table' ? pageNo : 0 });
   if (el._sig !== sig && !el.classList.contains('editing')) {
     el._sig = sig;
-    fillShape(el.querySelector('svg.shape'), it, Math.max(bx.w, 0.01), Math.max(bx.h, 0.01));
+    fillShape(el.querySelector('svg.shape'), it, Math.max(bx.w, 0.01), Math.max(bx.h, 0.01), M);
     if (it.type === 'table') renderTableCells(el, it, pageNo);
   }
 }
@@ -1081,22 +1142,116 @@ $('#zoomOut').onclick = () => { const r = scroller.getBoundingClientRect(); zoom
 $('#zoomFit').onclick = () => { zoom = 1; applyView(); scroller.scrollLeft = 0; scroller.scrollTop = 0; drawRulers(); };
 
 /* ---------- 글자 고쳐 쓰기 ---------- */
+/* 글자 고치는 중: 일부 글자 서식이 보이도록 span이 들어 있는 입력 칸을 씁니다 */
+let editSel = null, editSelSig = '', composing = false;
+const renderEditorDOM = (b, it, text, spans) => fillRichBody(b, { text, spans, pt: it.pt, color: it.color }, s => s, true);
+function spansFromOv(ov, it) { // 글자별 덮어쓰기 → 구간 목록 (기본과 같은 값은 뺌)
+  const out = []; let cur = null;
+  ov.forEach((o, i) => {
+    const pt = o.pt && o.pt !== it.pt ? o.pt : 0, c = o.color && o.color !== it.color ? o.color : '';
+    if (!pt && !c) { cur = null; return; }
+    if (cur && cur.b === i && (cur.pt || 0) === pt && (cur.color || '') === c) cur.b = i + 1;
+    else { cur = { a: i, b: i + 1, ...(pt ? { pt } : {}), ...(c ? { color: c } : {}) }; out.push(cur); }
+  });
+  return out;
+}
+function parseEditor(b, it) { // 입력 칸 → { text, spans, ov }
+  let text = ''; const ov = [];
+  const add = (str, st) => { for (const ch of str) { text += ch; ov.push(st); } };
+  const walk = (n, st) => {
+    if (n.nodeType === 3) { add(n.nodeValue.replace(/​/g, ''), st); return; }
+    if (n.nodeType !== 1) return;
+    if (n.tagName === 'BR') { add('\n', st); return; }
+    let s2 = st; if (n.dataset && (n.dataset.pt || n.dataset.c)) s2 = { pt: n.dataset.pt ? +n.dataset.pt : st.pt, color: n.dataset.c || st.color };
+    if (n !== b && /^(DIV|P|LI)$/.test(n.tagName) && text && !text.endsWith('\n')) add('\n', st);
+    for (const c of n.childNodes) walk(c, s2);
+  };
+  walk(b, {});
+  if (text.endsWith('\n')) { text = text.slice(0, -1); ov.pop(); }
+  return { text, ov, spans: spansFromOv(ov, it) };
+}
+function editorOffset(b, node, off) { // (노드, 위치) → 글자 번호
+  let count = 0, found = -1;
+  const len = n => (n.nodeType === 3 ? [...n.nodeValue].length : n.nodeType !== 1 ? 0 : n.tagName === 'BR' ? 1 : [...n.childNodes].reduce((t, c) => t + len(c), 0));
+  const walk = n => {
+    if (found >= 0) return;
+    if (n === node) { found = count + (n.nodeType === 3 ? [...n.nodeValue.slice(0, off)].length : [...n.childNodes].slice(0, off).reduce((t, c) => t + len(c), 0)); return; }
+    if (n.nodeType === 3) { count += [...n.nodeValue].length; return; }
+    if (n.nodeType === 1) { if (n.tagName === 'BR') { count += 1; return; } for (const c of n.childNodes) { walk(c); if (found >= 0) return; } }
+  };
+  walk(b); return found < 0 ? count : found;
+}
+function editorPoint(b, idx) { // 글자 번호 → (노드, 위치)
+  let count = 0;
+  const walk = n => {
+    if (n.nodeType === 3) { const cs = [...n.nodeValue]; if (idx - count <= cs.length) return [n, cs.slice(0, idx - count).join('').length]; count += cs.length; return null; }
+    if (n.nodeType !== 1) return null;
+    if (n.tagName === 'BR') { if (idx - count <= 0) return [n.parentNode, [...n.parentNode.childNodes].indexOf(n)]; count += 1; return null; }
+    for (const c of n.childNodes) { const r = walk(c); if (r) return r; }
+    return null;
+  };
+  return walk(b) || [b, b.childNodes.length];
+}
+function editorSelect(b, a, e) { const r = document.createRange(), p = editorPoint(b, a), q = editorPoint(b, e); r.setStart(p[0], p[1]); r.setEnd(q[0], q[1]); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r); }
+const editorEl = () => { const el = editingId != null && editingCell == null ? els.get(editingId) : null; return el ? el.querySelector('.body') : null; };
+function editorCommit() { // 입력 칸의 내용을 문서에 먼저 반영 (패널에서 상자 전체 서식을 바꿀 때)
+  const b = editorEl(), it = b && findItem(editingId); if (!it) return;
+  const m = parseEditor(b, it); it.text = m.text; if (m.spans.length) it.spans = m.spans; else delete it.spans;
+}
+function editorRefresh() { const b = editorEl(), it = b && findItem(editingId); if (!it) return; renderEditorDOM(b, it, it.text, it.spans || []); if (editSel) editorSelect(b, Math.min(editSel.a, [...it.text].length), Math.min(editSel.b, [...it.text].length)); }
+function selStyle() { // 고른 글자(또는 커서 앞 글자)의 크기·색
+  const b = editorEl(), it = b && findItem(editingId); if (!it) return null;
+  const m = parseEditor(b, it), at = editSel ? (editSel.a === editSel.b ? Math.max(0, editSel.a - 1) : editSel.a) : 0, o = m.ov[at] || {};
+  return { pt: o.pt || it.pt, color: o.color || it.color, n: editSel ? editSel.b - editSel.a : 0 };
+}
+function applyPartial(patch) { // 고른 글자만 크기·색 바꾸기 (null이면 그 항목을 기본으로 되돌림)
+  const b = editorEl(), it = b && findItem(editingId);
+  if (!it) return;
+  if (!editSel || editSel.a === editSel.b) return toast('먼저 바꿀 글자를 마우스로 끌어서 골라 주세요');
+  const m = parseEditor(b, it), ov = m.ov;
+  for (let i = editSel.a; i < editSel.b && i < ov.length; i++) {
+    const o = { ...ov[i] };
+    if ('pt' in patch) { if (patch.pt) o.pt = patch.pt; else delete o.pt; }
+    if ('color' in patch) { if (patch.color) o.color = patch.color; else delete o.color; }
+    ov[i] = o;
+  }
+  renderEditorDOM(b, it, m.text, spansFromOv(ov, it)); b.focus(); editorSelect(b, editSel.a, editSel.b); renderPropBox();
+}
+document.addEventListener('selectionchange', () => {
+  const b = editorEl(); if (!b) return;
+  const sl = getSelection(); if (!sl.rangeCount || !b.contains(sl.anchorNode) || !b.contains(sl.focusNode)) return;
+  let a = editorOffset(b, sl.anchorNode, sl.anchorOffset), e = editorOffset(b, sl.focusNode, sl.focusOffset); if (a > e) [a, e] = [e, a];
+  editSel = { a, b: e };
+  const st = selStyle(), sig = st ? `${a === e ? 'c' : 'r' + (e - a)}|${st.pt}|${st.color}` : '';
+  if (sig !== editSelSig) { editSelSig = sig; if (!composing) setTimeout(renderPropBox, 0); }
+});
+$('#side').addEventListener('mousedown', e => { if (editorEl() && e.target.closest('button')) e.preventDefault(); }); // 패널 단추를 눌러도 고르던 글자가 풀리지 않게
 function enterEdit(id, selectAll) {
   const it = findItem(id); if (!it || it.type !== 'text' || editingId === id) return;
   endEdit();
   const el = els.get(id), b = el.querySelector('.body');
-  editingId = id; editBefore = JSON.stringify(doc);
+  editingId = id; editingCell = null; editBefore = JSON.stringify(doc); editSel = null; editSelSig = ''; editFmt = null;
   el.classList.add('editing');
-  b.textContent = it.text;
-  try { b.contentEditable = 'plaintext-only'; } catch (e) { /* 아래에서 보완 */ }
-  if (b.contentEditable !== 'plaintext-only') b.contentEditable = 'true';
+  b._sig = null; renderEditorDOM(b, it, it.text, it.spans || []);
+  b.contentEditable = 'true';
+  b.style.textAlign = it.align === 'distribute' ? 'left' : it.align;
   renderSelection();
   b.focus();
-  const range = document.createRange(); range.selectNodeContents(b);
-  if (!selectAll) range.collapse(false);
-  const s = getSelection(); s.removeAllRanges(); s.addRange(range);
-  b.onblur = () => endEdit();
-  b.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); b.blur(); } };
+  if (selectAll) { const range = document.createRange(); range.selectNodeContents(b); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(range); }
+  else { const n = [...it.text].length; editorSelect(b, n, n); } // 글 맨 끝(빈 줄 자리표시 앞)에 커서
+  b.onblur = e => { const rt = e.relatedTarget; if (rt && rt.closest && rt.closest('#side')) return; endEdit(); }; // 오른쪽 패널을 눌러도 고치기는 계속
+  b.oncompositionstart = () => { composing = true; };
+  b.oncompositionend = () => { composing = false; };
+  b.oninput = () => { // 줄바꿈 등으로 모양이 흐트러졌으면 깔끔하게 다시 그림
+    if (composing || !b.querySelector('div, p, li, font, b, i, u, strong, em')) return;
+    const sl2 = getSelection(), pos = sl2.rangeCount && b.contains(sl2.focusNode) ? editorOffset(b, sl2.focusNode, sl2.focusOffset) : null;
+    const m = parseEditor(b, it); renderEditorDOM(b, it, m.text, m.spans); if (pos != null) editorSelect(b, pos, pos);
+  };
+  b.onpaste = e => { e.preventDefault(); const t = (e.clipboardData && e.clipboardData.getData('text/plain')) || ''; t.split(/\r\n?|\n/).forEach((ln, k) => { if (k) document.execCommand('insertLineBreak'); if (ln) document.execCommand('insertText', false, ln); }); };
+  b.onkeydown = e => {
+    if (e.key === 'Escape') { e.preventDefault(); b.blur(); return; }
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); document.execCommand('insertLineBreak'); }
+  };
 }
 function endEdit(skipRender) {
   if (editingId == null) return;
@@ -1116,14 +1271,20 @@ function endEdit(skipRender) {
     editBefore = null; renderSelection(); renderPropBox(); return;
   }
   const b = el.querySelector('.body');
-  b.onblur = null; b.onkeydown = null;
+  b.onblur = null; b.onkeydown = null; b.oninput = null; b.onpaste = null; b.oncompositionstart = null; b.oncompositionend = null; composing = false;
   b.removeAttribute('contenteditable');
   if (it) {
-    const t = b.innerText.replace(/\n$/, ''), fp = editFmt; editFmt = null;
-    if (t !== it.text || fp) { undoStack.push(editBefore); redoStack.length = 0; lastKey = ''; updateUndo(); it.text = t; if (fp) { Object.assign(it, fp); if (it.bold && !(FONTS[it.font] || FONTS.pretendard).files[700]) it.bold = false; } save(); }
-    syncItemEl(el, it, ui.pageIdx + 1, gridStep());
+    const m = parseEditor(b, it), fp = editFmt; editFmt = null;
+    const same = m.text === it.text && JSON.stringify(m.spans) === JSON.stringify(it.spans || []);
+    if (!same || fp) {
+      undoStack.push(editBefore); redoStack.length = 0; lastKey = ''; updateUndo();
+      it.text = m.text; if (m.spans.length) it.spans = m.spans; else delete it.spans;
+      if (fp) { Object.assign(it, fp); if (it.bold && !(FONTS[it.font] || FONTS.pretendard).files[700]) it.bold = false; }
+      save();
+    }
+    b.textContent = ''; b._sig = null; syncItemEl(el, it, ui.pageIdx + 1, gridStep());
   }
-  editBefore = null;
+  editBefore = null; editSel = null; editSelSig = '';
   renderSelection();
 }
 function enterCellEdit(id, key) {
@@ -1184,7 +1345,7 @@ function removeSelGuide() {
   selGuide = null; extraGuides = []; renderUserGuides(); renderPropBox(); renderGuideBox();
 }
 function copySel() { const items = selItems(); if (!items.length) return false; clip = { items: JSON.parse(JSON.stringify(items)), key: ctxKey() }; pasteN = 0; renderPropBox(); return true; }
-function pasteClip() {
+function pasteClip(flip) {
   if (!clip) return toast('복사한 것이 없어요');
   endEdit();
   const same = clip.key === ctxKey(), st = gridStep(); pasteN++;
@@ -1194,11 +1355,23 @@ function pasteClip() {
     for (const src of clip.items) {
       const c = JSON.parse(JSON.stringify(src)); c.id = id++; c.lock = false;
       if (c.gid) { if (!gmap.has(c.gid)) gmap.set(c.gid, newUid('G')); c.gid = gmap.get(c.gid); }
-      if (same) moveItem(c, st * pasteN, st * pasteN);
+      if (flip === true) flipItems([c], doc.page.w); else if (same) moveItem(c, st * pasteN, st * pasteN);
       ctxItems().push(c); made.push(c.id);
     }
   });
   renderItems(); select(made);
+}
+function flipItems(list, W) { // 쪽 가운데를 기준으로 좌우를 뒤집음 (홀수 쪽 ↔ 짝수 쪽 배치 바꾸기)
+  const r4 = v => Math.round(v * 10000) / 10000;
+  for (const it of list) {
+    if (it.type === 'line') { it.x1 = r2(W - it.x1); it.x2 = r2(W - it.x2); continue; }
+    it.x = r2(W - it.x - it.w); if (it.rot) it.rot = r2(normDeg(-it.rot));
+    if (it.type === 'path') it.pts = it.pts.map(p => [r4(1 - p[0]), p[1]]);
+  }
+}
+function flipSel() {
+  const items = selItems().filter(i => !i.lock); if (!items.length) return toast('뒤집을 것이 없어요(잠긴 것은 뒤집지 않아요)');
+  mutate(() => flipItems(items, doc.page.w)); refreshItems(items.map(i => i.id)); renderPropBox(); toast(`${items.length}개를 좌우로 뒤집었어요 (쪽 가운데 기준)`);
 }
 function dupSel() { if (copySel()) { pasteN = 0; pasteClip(); } }
 function reorder(mode) {
@@ -1616,8 +1789,13 @@ function renderItemProps(b, items) {
   const upd = (fn, key) => {
     const t = items.filter(i => !i.lock);
     if (!t.length) return toast('잠긴 개체는 바꿀 수 없어요. 잠금을 풀어 주세요');
-    mutate(() => { for (const it of t) fn(it); }, key ? key + primary.id : ''); refreshItems(ids); renderPropBox();
+    const ed = editingId != null && editingCell == null && ids.includes(editingId);
+    if (ed) editorCommit(); // 글자를 고치는 중이면 입력한 내용부터 문서에 반영
+    mutate(() => { for (const it of t) fn(it); }, key ? key + primary.id : ''); refreshItems(ids);
+    if (ed) editorRefresh();
+    renderPropBox();
   };
+  const dropSpanKey = (it, k) => { if (!it.spans) return; for (const sp of it.spans) delete sp[k]; it.spans = it.spans.filter(sp => sp.pt || sp.color); if (!it.spans.length) delete it.spans; }; // 상자 전체를 바꾸면 일부 글자 서식은 걷어냄
   const locked = items.some(i => i.lock);
   b.append(h('div', { class: 'sub2' }, items.length === 1 ? `${typeName(primary)} 1개 선택${primary.lock ? ' (잠김)' : ''}` : `${items.length}개 선택${items.some(i => i.gid) ? ' (묶음 포함)' : ''}`));
 
@@ -1657,7 +1835,7 @@ function renderItemProps(b, items) {
   b.append(h('div', { class: 'btnrow' }, btn('맨 앞으로', () => reorder('front')), btn('앞으로', () => reorder('up')), btn('뒤로', () => reorder('down')), btn('맨 뒤로', () => reorder('back'))));
   b.append(h('div', { class: 'btnrow' }, btn('묶기', groupSel, { disabled: items.length < 2 }), btn('묶음 풀기', ungroupSel, { disabled: !items.some(i => i.gid) }),
     btn(locked ? '잠금 풀기' : '잠금', () => setProp('lock', !locked)), btn('숨기기', () => { setProp('hide', true); })));
-  b.append(h('div', { class: 'btnrow' }, btn('복사', copySel), btn('오려두기', () => { if (copySel()) removeSel(); }), btn('붙여넣기', pasteClip, { disabled: !clip }), btn('복제', dupSel), btn('지우기', removeSel),
+  b.append(h('div', { class: 'btnrow' }, btn('복사', copySel), btn('오려두기', () => { if (copySel()) removeSel(); }), btn('붙여넣기', () => pasteClip(), { disabled: !clip }), btn('좌우 뒤집어 붙여넣기', () => pasteClip(true), { disabled: !clip }), btn('↔ 좌우 뒤집기', flipSel), btn('복제', dupSel), btn('지우기', removeSel),
     btn('서식 복사', copyFormat), btn('서식 붙여넣기', pasteFormat, { disabled: !fmt })));
 
   // 종류별 설정 (같은 종류만 골랐을 때)
@@ -1665,18 +1843,27 @@ function renderItemProps(b, items) {
   const thick = [0.1, 0.2, 0.3, 0.5, 0.8, 1.2, 2];
   const thickSel = () => h('select', { onchange: e => upd(it => { it.th = +e.target.value; }) }, thick.map(t => h('option', { value: t, selected: Math.abs(primary.th - t) < 0.001 }, t + ' mm')));
   const dashSeg = () => seg([[0, '실선'], [1, '점선']], primary.dash ? 1 : 0, v => upd(it => { it.dash = !!v; }));
-  const color = (label = '색') => row(label, swatches(primary.color, c => upd(it => { it.color = c; })));
+  const color = (label = '색') => row(label, swatches(primary.color, c => upd(it => { it.color = c; if (it.type === 'text') dropSpanKey(it, 'color'); })));
   const toneRow = (cur, onTone) => row('농도', stepper(cur, { min: 5, max: 100, step: 5 }, onTone), h('span', { class: 'unit' }, '%'));
   b.append(h('div', { class: 'sub2' }, `${typeName(primary)} 설정`));
   if (primary.type === 'text') {
     const f = FONTS[primary.font] || FONTS.pretendard;
     b.append(row('글꼴', h('select', { onchange: e => upd(it => { it.font = e.target.value; if (!FONTS[it.font].files[700]) it.bold = false; }) }, Object.entries(FONTS).map(([k, v]) => h('option', { value: k, selected: primary.font === k }, v.label)))));
-    b.append(row('글자 크기', stepper(primary.pt, { min: 4, max: 80, step: 1 }, v => upd(it => { it.pt = v; }, 'pt')), h('span', { class: 'unit' }, 'pt')));
-    b.append(row('모양', f.files[700] ? btn('굵게', () => upd(it => { it.bold = !primary.bold; }), { class: primary.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '이 글꼴은 굵게가 없어요'),
-      seg([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']], primary.align, v => upd(it => { it.align = v; }))));
+    b.append(row('글자 크기', stepper(primary.pt, { min: 4, max: 80, step: 1 }, v => upd(it => { it.pt = v; dropSpanKey(it, 'pt'); }, 'pt')), h('span', { class: 'unit' }, 'pt')));
+    b.append(row('모양', f.files[700] ? btn('굵게', () => upd(it => { it.bold = !primary.bold; }), { class: primary.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '이 글꼴은 굵게가 없어요')));
+    b.append(row('정렬', seg([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽'], ['justify', '양쪽'], ['distribute', '균등']], primary.align, v => upd(it => { it.align = v; }))));
+    if (primary.align === 'justify' || primary.align === 'distribute') b.append(h('p', { class: 'hint' }, primary.align === 'justify' ? '양쪽: 여러 줄 글에서 줄의 양 끝을 상자 폭에 맞춰요(문단의 마지막 줄만 왼쪽).' : '균등: 짧은 한 줄도 글자 사이를 벌려 상자 폭에 꽉 채워요(줄마다).'));
     b.append(row('줄 간격', h('select', { onchange: e => upd(it => { it.lh = parseFloat(e.target.value); }) }, [[0, '자동'], [1, '모눈 1칸'], [1.5, '모눈 1.5칸'], [2, '모눈 2칸']].map(([v, l]) => h('option', { value: v, selected: primary.lh === v }, l)))));
     b.append(color()); { const hn = colorHint(primary.color); if (hn) b.append(hn); }
+    if (items.length === 1 && editingId === primary.id && editingCell == null) { // 고치는 중: 고른 글자만 크기·색 바꾸기
+      const ss = selStyle() || { pt: primary.pt, color: primary.color, n: 0 };
+      b.append(h('div', { class: 'sub2' }, ss.n ? `선택한 글자 ${ss.n}자만 바꾸기` : '일부 글자만 바꾸기 — 먼저 글자를 끌어서 고르세요'));
+      b.append(row('크기', stepper(ss.pt, { min: 4, max: 200, step: 1 }, v => applyPartial({ pt: v })), h('span', { class: 'unit' }, 'pt')));
+      b.append(row('색', swatches(ss.color, c => applyPartial({ color: c }))));
+      b.append(row('', btn('선택 글자를 기본 서식으로', () => applyPartial({ pt: null, color: null }))));
+    }
     if (items.length === 1) b.append(row('', btn('글자 고쳐 쓰기', () => enterEdit(primary.id, false))));
+    if (items.length === 1 && editingId !== primary.id) b.append(h('p', { class: 'hint' }, '글자 일부만 크기·색을 바꾸려면 “글자 고쳐 쓰기”를 누르고, 바꿀 글자를 끌어서 고른 뒤 아래에 나오는 크기·색을 바꾸세요.'));
     b.append(h('p', { class: 'hint' }, '글 속에 {쪽} 이라고 쓰면 쪽 번호로, {전체} 는 전체 쪽 수로 바뀌어요. (바탕에 넣으면 모든 쪽에 번호가 자동으로 찍혀요)'));
     if (f.limited) b.append(h('p', { class: 'hint' }, '개구 글꼴은 흔한 글자 위주라 드문 글자는 빠질 수 있어요. 내보낼 때 빠진 글자를 알려드려요.'));
   } else if (primary.type === 'line') {
