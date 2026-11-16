@@ -73,10 +73,10 @@
       const tp = tdoc.addPage([TW, TH]);
       const tx = x => (b + x) * K, ty = y => TH - (b + y) * K;
       const col = colorOf(m.grid.color, m.grid.tone / 100);
-      const { xs, ys } = NP.gridGeometry(W, H, m.grid.size, b);
+      const plan = NP.gridPlan(W, H, m.grid, b), { xs, ys } = plan;
       if (m.grid.type === 'square' || m.grid.type === 'line') {
-        if (m.grid.type === 'square') for (const x of xs) tp.drawLine({ start: { x: tx(x), y: ty(-b) }, end: { x: tx(x), y: ty(H + b) }, thickness: (m.grid.lw || 0.15) * K, color: col });
-        for (const y of ys) tp.drawLine({ start: { x: tx(-b), y: ty(y) }, end: { x: tx(W + b), y: ty(y) }, thickness: (m.grid.lw || 0.15) * K, color: col });
+        if (m.grid.type === 'square') for (const x of xs) tp.drawLine({ start: { x: tx(x), y: ty(plan.ay0) }, end: { x: tx(x), y: ty(plan.ay1) }, thickness: (m.grid.lw || 0.15) * K, color: col });
+        for (const y of ys) tp.drawLine({ start: { x: tx(plan.ax0), y: ty(y) }, end: { x: tx(plan.ax1), y: ty(y) }, thickness: (m.grid.lw || 0.15) * K, color: col });
       } else if (m.grid.type === 'dot') {
         for (const y of ys) for (const x of xs) tp.drawCircle({ x: tx(x), y: ty(y), size: ((m.grid.dot || 0.6) / 2) * K, color: col, borderWidth: 0 });
       }

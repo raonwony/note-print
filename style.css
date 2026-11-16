@@ -38,7 +38,8 @@ button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .banner[hidden]{display:none}
 #stageScroll{position:relative;flex:1;min-height:0;overflow:auto;background:#dfe3e0;-webkit-overflow-scrolling:touch}
 #pageBox{margin:16px auto;width:max-content;max-width:none;box-shadow:0 2px 12px rgba(0,0,0,.25)}
-#bleedFrame{position:relative;background:#fff;overflow:hidden}
+#bleedFrame{position:relative;background:#fbe4e4;overflow:hidden}
+#page{background:#fff}
 #page{position:absolute;overflow:visible}
 #layerM,#layerP{position:absolute;left:0;top:0;width:0;height:0;overflow:visible}
 #layerM{pointer-events:none}
@@ -283,3 +284,21 @@ input.cname-in{width:96px;border:1px solid var(--line);border-radius:6px;padding
 .sheetlabel{margin:8px auto 4px;font-size:12px;font-weight:600;color:var(--accent-d);text-align:center}
 .sum li.bad{color:#b3361b}
 @media print{.sheetlabel{display:none!important}}
+
+/* ---- 안내선 범례 · 가이드 도구 ---- */
+.legend{margin-left:auto;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.legend .lg{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-left:6px}
+.legend .lg.trim{border-color:#111}
+.legend .lg.bleed{border-color:#e5484d}
+.legend .lg.safe{border-top-style:dashed;border-color:#2b8ad6}
+.gcolors{display:flex;gap:6px;flex-wrap:wrap}
+.gcolors button{width:28px;height:28px;border-radius:50%;padding:0;min-height:0;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.gcolors button.on{box-shadow:0 0 0 3px var(--accent)}
+.gsetrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+.gsetrow .nm{flex:1;min-width:90px;font-size:13px}
+.gsetrow button{min-height:30px;padding:2px 8px;font-size:12px}
+.btnrow button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.savestate{font-size:12px;color:var(--accent-d)}
+.savestate.bad{color:#b3361b;font-weight:600}

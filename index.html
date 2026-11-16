@@ -18,7 +18,7 @@
 <body>
 <div id="app">
   <header class="top">
-    <h1>노트 인쇄</h1>
+    <div class="brand"><h1>노트 인쇄</h1><span id="saveState" class="savestate" aria-live="polite"></span></div>
     <div class="top-btns">
       <button id="undoBtn" type="button" title="방금 한 일 취소 (Cmd+Z)">↶ 되돌리기</button>
       <button id="redoBtn" type="button" title="다시 하기 (Shift+Cmd+Z)">다시 ↷</button>
@@ -42,6 +42,7 @@
         <button id="tgSmart" type="button" class="tog on" title="옮길 때 다른 것에 맞춰 주는 보조선">스마트 가이드</button>
         <button id="tgGrid" type="button" class="tog on" title="모눈 칸에 붙이기">모눈에 붙이기</button>
         <span id="sizeInfo" class="muted"></span>
+        <span class="legend" id="legend" title="작업 화면에만 보이고 인쇄되지 않아요"><i class="lg trim"></i>노트 크기(자르는 자리) <i class="lg bleed"></i>도련 끝(배경은 여기까지) <i class="lg safe"></i>안전선(글자는 안쪽)</span>
       </div>
       <div class="insertbar" id="insertBar" aria-label="넣기">
         <span class="ilabel">넣기</span>
@@ -110,6 +111,10 @@
         <details open>
           <summary>용지 크기 · 도련</summary>
           <div class="box" id="paperBox"></div>
+        </details>
+        <details open>
+          <summary>가이드선</summary>
+          <div class="box" id="guideBox"></div>
         </details>
         <details open>
           <summary>쪽 번호</summary>
@@ -204,6 +209,8 @@
       <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
     <ul id="myList" class="my-list"></ul>
+    <div class="checks"><label><input type="checkbox" id="confirmCloseChk" checked> 닫기 전에, 백업(내 노트 저장·파일 내보내기)하지 않은 변경이 있으면 확인 창 띄우기</label></div>
+    <p class="muted small">지금 만들고 있는 노트는 고칠 때마다 이 브라우저에 <b>자동으로 저장</b>돼서, 닫았다 다시 열어도 그대로예요. 다만 이 기기·이 브라우저에만 있으니, 다른 기기로 옮기거나 안전하게 보관하려면 “파일로 내보내기”를 쓰세요.</p>
     <p class="muted small">저장한 노트는 이 기기의 이 브라우저 안에 보관됩니다. 다른 기기로 옮기거나 백업하려면 “파일로 내보내기”를 쓰세요.</p>
   </div>
 </div>

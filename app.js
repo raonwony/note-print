@@ -68,6 +68,7 @@ function toast(msg) {
 function defaultDoc() {
   return {
     v: 5, kind: 'free', page: { w: 105, h: 148 }, bleed: 5, safe: 5, snap: true, colors: NP.defaultColors(),
+    guideSets: [],
     pageNum: { on: false, h: 'outer', v: 'bottom', start: 1, pt: 8, font: 'pretendard', color: 'k100' },
     holes: { on: false, preset: 'custom', gaps: [19, 19, 38, 19, 19], dia: 5, edge: 6, est: true },
     masters: [{ id: 'm1', name: '바탕 1', grid: { type: 'square', size: 5, tone: 35, color: 'k100' }, guides: [], items: [] }],
@@ -122,7 +123,7 @@ function normalize(s) {
       if (!['text', 'line', 'shape', 'path', 'table', 'image'].includes(it.type)) continue;
       let id = Number.isInteger(it.id) && !used.has(it.id) ? it.id : next++;
       used.add(id);
-      const b = { type: it.type, id, color: mc(it.color), rot: normDeg(+it.rot || 0), lock: !!it.lock, hide: !!it.hide, gid: typeof it.gid === 'string' ? it.gid : null };
+      const b = { type: it.type, id, color: mc(it.color), rot: normDeg(+it.rot || 0), lock: !!it.lock, hide: !!it.hide, gid: typeof it.gid === 'string' ? it.gid : null, ar: !!it.ar };
       if (it.type === 'text') {
         const font = FONTS[it.font] ? it.font : 'pretendard';
         Object.assign(b, { x: +it.x || 0, y: +it.y || 0, w: +it.w || 30, pt: +it.pt || 12, text: String(it.text ?? ''), bold: !!it.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right'].includes(it.align) ? it.align : 'left', font, lh: +it.lh || 0 });
@@ -161,14 +162,15 @@ function normalize(s) {
     if (old) out.sort((a, b) => ZO[a.type] - ZO[b.type]); // 예전 파일: 네모 < 선 < 글자 순서를 그대로 유지
     return out;
   };
-  const guides = arr => (Array.isArray(arr) ? arr : []).filter(g => g && (g.axis === 'x' || g.axis === 'y') && Number.isFinite(+g.pos)).map((g, i) => ({ id: String(g.id || 'g' + i + Math.random().toString(36).slice(2, 6)), axis: g.axis, pos: +g.pos }));
+  const gcolors = NP.GUIDE_COLORS.map(x => x[0]);
+  const guides = arr => (Array.isArray(arr) ? arr : []).filter(g => g && (g.axis === 'x' || g.axis === 'y') && Number.isFinite(+g.pos)).map((g, i) => ({ id: String(g.id || 'g' + i + Math.random().toString(36).slice(2, 6)), axis: g.axis, pos: +g.pos, ...(gcolors.includes(g.color) ? { color: g.color } : {}), ...(g.lock ? { lock: true } : {}) }));
   const mids = new Set();
   for (const m of src.masters || []) {
     if (!m) continue;
     let id = typeof m.id === 'string' && !mids.has(m.id) ? m.id : 'm' + (mids.size + 100);
     mids.add(id);
     const g = m.grid || {};
-    o.masters.push({ id, name: String(m.name || '바탕'), grid: { type: ['square', 'dot', 'line', 'none'].includes(g.type) ? g.type : 'square', size: clamp(+g.size || 5, 2, 30), tone: clamp(+g.tone || 35, 5, 100), color: mc(g.color || 'k100'), lw: clamp(+g.lw || 0.15, 0.05, 1), dot: clamp(+g.dot || 0.6, 0.2, 3) }, guides: guides(m.guides), items: items(m.items) });
+    o.masters.push({ id, name: String(m.name || '바탕'), grid: { type: ['square', 'dot', 'line', 'none'].includes(g.type) ? g.type : 'square', size: clamp(+g.size || 5, 2, 30), tone: clamp(+g.tone || 35, 5, 100), color: mc(g.color || 'k100'), lw: clamp(+g.lw || 0.15, 0.05, 1), dot: clamp(+g.dot || 0.6, 0.2, 3), inset: { l: clamp(+(g.inset || {}).l || 0, 0, 60), t: clamp(+(g.inset || {}).t || 0, 0, 60), r: clamp(+(g.inset || {}).r || 0, 0, 60), b: clamp(+(g.inset || {}).b || 0, 0, 60) }, start: g.start === 'corner' ? 'corner' : 'center', dx: clamp(+g.dx || 0, -60, 60), dy: clamp(+g.dy || 0, -60, 60) }, guides: guides(m.guides), items: items(m.items) });
   }
   const pids = new Set();
   for (const p of src.pages || []) {
@@ -179,11 +181,12 @@ function normalize(s) {
     o.pages.push({ id, master: o.masters.some(m => m.id === p.master) ? p.master : null, guides: guides(p.guides), items: items(p.items), ...(pnum && Object.keys(pnum).length ? { num: pnum } : {}) });
   }
   if (!o.pages.length) o.pages.push({ id: 'p1', master: o.masters[0] ? o.masters[0].id : null, guides: [], items: [] });
+  o.guideSets = (Array.isArray(src.guideSets) ? src.guideSets : []).slice(0, 30).map((q, i) => ({ id: String((q && q.id) || 'S' + i), name: String((q && q.name) || '가이드 묶음'), guides: guides(q && q.guides).map(({ axis, pos, color }) => ({ axis, pos, ...(color ? { color } : {}) })) })).filter(q => q.guides.length);
   return o;
 }
 let doc = normalize(lsGet(LS.cur, null) || lsGet(LS.cur1, null));
-const ui = { tab: 'doc', tabManual: false, pageIdx: 0, editMaster: false, masterId: null, guides: true, rulers: true, userGuides: true, smart: true, guideScope: 'page', alignTo: 'sel', draw: false };
-let selIds = [], selGuide = null, editingId = null, editingCell = null, cellSel = null, editBefore = null, zoom = 1;
+const ui = { tab: 'doc', tabManual: false, pageIdx: 0, editMaster: false, masterId: null, guides: true, rulers: true, userGuides: true, smart: true, guideScope: 'page', alignTo: 'sel', draw: false, guideColor: '#14b8d4', divArea: 'page' };
+let selIds = [], selGuide = null, extraGuides = [], editingId = null, editingCell = null, cellSel = null, editBefore = null, zoom = 1;
 let clip = null, fmt = null, pasteN = 0;
 const els = new Map();
 
@@ -228,7 +231,25 @@ function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(d
 function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(doc)); lastKey = ''; restore(redoStack.pop()); }
 function updateUndo() { $('#undoBtn').disabled = !undoStack.length; $('#redoBtn').disabled = !redoStack.length; }
 let saveT;
-function save() { clearTimeout(saveT); saveT = setTimeout(() => lsSet(LS.cur, doc), 250); scheduleStrip(); }
+function writeNow() { // 지금 바로 이 브라우저에 저장
+  clearTimeout(saveT); saveT = null;
+  const ok = lsSet(LS.cur, doc), el = $('#saveState');
+  if (el) { const t = new Date(); el.textContent = ok ? `✔ 자동 저장됨 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '⚠ 저장 공간이 부족해요 — “내 노트 → 파일로 내보내기”로 백업하세요'; el.classList.toggle('bad', !ok); }
+  return ok;
+}
+function save() { clearTimeout(saveT); saveT = setTimeout(writeNow, 250); scheduleStrip(); }
+/* ---- 닫기 전 저장·확인 ---- */
+let lastBackup = '';
+const markBackup = () => { lastBackup = JSON.stringify(doc); }; // “내 노트 저장”이나 “파일로 내보내기”를 한 시점의 모습
+const hasContent = () => doc.pages.length > 1 || doc.pages.some(p => p.items.length) || doc.masters.some(m => m.items.length);
+const confirmCloseOn = () => lsGet('noteprint.confirmClose', true) !== false;
+function flushBeforeLeave() { endEdit(true); writeNow(); }
+window.addEventListener('pagehide', flushBeforeLeave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushBeforeLeave(); });
+window.addEventListener('beforeunload', e => {
+  flushBeforeLeave(); // 어떤 경우에도 마지막 수정까지 이 브라우저에 저장
+  if (confirmCloseOn() && hasContent() && JSON.stringify(doc) !== lastBackup) { e.preventDefault(); e.returnValue = ''; } // 백업(내 노트·파일) 안 한 변경이 있으면 닫기 전에 한 번 물어봄
+});
 function mutate(fn, key) { snapshot(key); fn(); save(); }
 
 /* ---------- 이미지 보관 (브라우저 안 IndexedDB: 사진은 용량이 커서 노트 데이터와 따로 둡니다) ---------- */
@@ -262,7 +283,7 @@ async function importImageFiles(files) {
     const { w, h: ph } = doc.page, st = gridStep(), n = ctxItems().length % 5;
     let ww = r2(w * 0.6), hh = r2(ww * info.nh / info.nw);
     if (hh > ph * 0.7) { hh = r2(ph * 0.7); ww = r2(hh * info.nw / info.nh); }
-    const it = { type: 'image', rot: 0, lock: false, hide: false, gid: null, color: 'k100', x: snapPos(w * 0.12, 'x') + n * st, y: snapPos(ph * 0.12, 'y') + n * st, w: ww, h: hh, src: id, nw: info.nw, nh: info.nh, name: file.name, cl: 0, ct: 0, cr: 0, cb: 0, gray: false };
+    const it = { type: 'image', rot: 0, lock: false, hide: false, gid: null, color: 'k100', x: snapPos(w * 0.12, 'x') + n * st, y: snapPos(ph * 0.12, 'y') + n * st, w: ww, h: hh, src: id, nw: info.nw, nh: info.nh, name: file.name, cl: 0, ct: 0, cr: 0, cb: 0, gray: false, ar: true };
     mutate(() => { it.id = nextItemId(); ctxItems().push(it); });
     renderItems(); select([it.id]);
   }
@@ -278,8 +299,9 @@ function applyCrop(it, cl, ct, cr, cb) { // 사진을 보이는 크기 그대로
 }
 
 /* ---------- 모눈·도형 계산 ---------- */
-function snapPos(v, axis) { // 모눈 칸에 맞춤(칸 사이 가운데 여백 기준)
-  const s = gridStep(), o = (axis === 'x' ? doc.page.w : doc.page.h) % s / 2;
+function snapPos(v, axis) { // 모눈 칸에 맞춤 (모눈이 시작하는 위치 기준)
+  const s = gridStep(), m = ctxMaster();
+  const o = m ? NP.gridPlan(doc.page.w, doc.page.h, m.grid, 0)[axis === 'x' ? 'ox' : 'oy'] : (axis === 'x' ? doc.page.w : doc.page.h) % s / 2;
   return r2(o + Math.round((v - o) / s) * s);
 }
 function snapLen(v) { const s = gridStep(); return Math.max(s, r2(Math.round(v / s) * s)); }
@@ -289,10 +311,10 @@ function gridSVG(m, bleed) {
   svg.style.cssText = `left:${U(-b)};top:${U(-b)};width:${U(w + 2 * b)};height:${U(ph + 2 * b)}`;
   const g = m.grid;
   if (g.type === 'none') return svg;
-  const { xs, ys } = NP.gridGeometry(w, ph, g.size, b);
+  const pl = NP.gridPlan(w, ph, g, b), { xs, ys } = pl;
   let d = '', sw = g.lw || 0.15, cap = 'butt';
-  if (g.type === 'square') { for (const x of xs) d += `M${x} ${-b}V${ph + b}`; for (const y of ys) d += `M${-b} ${y}H${w + b}`; }
-  else if (g.type === 'line') { for (const y of ys) d += `M${-b} ${y}H${w + b}`; }
+  if (g.type === 'square') { for (const x of xs) d += `M${x} ${pl.ay0}V${pl.ay1}`; for (const y of ys) d += `M${pl.ax0} ${y}H${pl.ax1}`; }
+  else if (g.type === 'line') { for (const y of ys) d += `M${pl.ax0} ${y}H${pl.ax1}`; }
   else { sw = g.dot || 0.6; cap = 'round'; for (const y of ys) for (const x of xs) d += `M${x} ${y}h0`; }
   svg.append(svgEl('path', { d, stroke: colorRGB(g.color, g.tone / 100), 'stroke-width': sw, 'stroke-linecap': cap, fill: 'none' }));
   return svg;
@@ -458,9 +480,9 @@ function renderGuides() { // 재단선·도련·안전선 안내선
   const { w, h: ph } = doc.page, b = doc.bleed, sf = doc.safe;
   const svg = svgEl('svg', { class: 'guides', viewBox: `${-b} ${-b} ${w + 2 * b} ${ph + 2 * b}`, preserveAspectRatio: 'none' });
   svg.style.cssText = `left:${U(-b)};top:${U(-b)};width:${U(w + 2 * b)};height:${U(ph + 2 * b)}`;
-  const rect = (x, y, ww, hh, stroke, dash) => svg.append(svgEl('rect', { x, y, width: ww, height: hh, fill: 'none', stroke, 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', ...(dash ? { 'stroke-dasharray': '5 4' } : {}) }));
-  if (b > 0) rect(-b, -b, w + 2 * b, ph + 2 * b, '#e5484d', true);
-  rect(0, 0, w, ph, '#222', false);
+  const rect = (x, y, ww, hh, stroke, dash, sw = 1) => svg.append(svgEl('rect', { x, y, width: ww, height: hh, fill: 'none', stroke, 'stroke-width': sw, 'vector-effect': 'non-scaling-stroke', ...(dash ? { 'stroke-dasharray': '6 4' } : {}) }));
+  if (b > 0) rect(-b, -b, w + 2 * b, ph + 2 * b, '#e5484d', false, 1.6); // 도련 끝(바깥 빨간 실선)
+  rect(0, 0, w, ph, '#111', false, 1.3); // 노트 크기 = 자르는 자리(검정 실선)
   if (sf > 0) rect(sf, sf, w - 2 * sf, ph - 2 * sf, '#2b8ad6', true);
   if (doc.holes.on && doc.kind !== 'bound') { // 링 구멍 가이드: 홀수 쪽=왼쪽 가장자리, 짝수 쪽=오른쪽 가장자리, 세로는 가운데 기준 대칭
     const hl = doc.holes, left = ui.editMaster || ui.pageIdx % 2 === 0, hx = left ? hl.edge : w - hl.edge, span = hl.gaps.reduce((a, c) => a + c, 0);
@@ -545,23 +567,25 @@ function guideTarget() {
   return ui.guideScope === 'master' && m ? m.guides : curPage().guides;
 }
 let tempGuide = null;
+const guideSel = () => (selGuide ? [...new Set([...extraGuides, selGuide])].filter(id => findGuide(id)) : []);
 function renderUserGuides() {
   const svg = $('#guideLayer'); svg.textContent = '';
   if (!ui.userGuides) return;
-  const { w, h: ph } = doc.page, b = doc.bleed;
+  const { w, h: ph } = doc.page, b = doc.bleed, sel = guideSel();
   svg.setAttribute('viewBox', `${-b} ${-b} ${w + 2 * b} ${ph + 2 * b}`); svg.setAttribute('preserveAspectRatio', 'none');
   const list = allGuides().map(x => x.g); if (tempGuide) list.push(tempGuide);
   for (const g of list) {
     const a = g.axis === 'x' ? { x1: g.pos, x2: g.pos, y1: -b, y2: ph + b } : { x1: -b, x2: w + b, y1: g.pos, y2: g.pos };
-    const on = g.id === selGuide;
-    svg.append(svgEl('line', { ...a, stroke: on ? '#0b6fd1' : '#14b8d4', 'stroke-width': on ? 2 : 1, 'vector-effect': 'non-scaling-stroke' }));
+    const on = sel.includes(g.id), col = g.color || '#14b8d4';
+    if (on) svg.append(svgEl('line', { ...a, stroke: col, 'stroke-width': 7, 'stroke-opacity': 0.28, 'vector-effect': 'non-scaling-stroke' }));
+    svg.append(svgEl('line', { ...a, stroke: col, 'stroke-width': on ? 2 : 1.2, ...(g.lock ? { 'stroke-dasharray': '7 3' } : {}), 'vector-effect': 'non-scaling-stroke' }));
     svg.append(svgEl('line', { ...a, class: 'hit ' + g.axis, 'data-gid': g.id }));
   }
 }
 function startNewGuide(e, axis) {
   e.preventDefault();
   const p = toMM(e);
-  tempGuide = { id: newUid('g'), axis, pos: r2(axis === 'x' ? p.x : p.y) };
+  tempGuide = { id: newUid('g'), axis, pos: r2(axis === 'x' ? p.x : p.y), color: ui.guideColor };
   drag = { mode: 'newguide', axis };
   renderUserGuides();
 }
@@ -584,17 +608,22 @@ document.querySelectorAll('.tabs button').forEach(b => { b.onclick = () => showT
 function select(ids) {
   ids = expandGroups([].concat(ids == null ? [] : ids));
   if (editingId != null && !(ids.length === 1 && ids[0] === editingId)) endEdit();
-  selIds = ids; selGuide = null;
+  selIds = ids; selGuide = null; extraGuides = [];
   if (!(ids.length === 1 && cellSel && cellSel.id === ids[0])) cellSel = null;
   for (const [i, el] of els) el.classList.toggle('sel', isSel(i));
   renderSelection(); renderPropBox(); renderUserGuides();
   if (selIds.length) showTab('obj'); else if (ui.tab === 'obj' && !ui.tabManual) showTab('doc');
 }
-function selectGuide(id) {
-  selIds = []; selGuide = id;
+function selectGuide(id, additive) {
+  if (additive && selGuide) {
+    const cur = guideSel();
+    if (cur.includes(id)) { const rest = cur.filter(x => x !== id); selGuide = rest[rest.length - 1] || null; extraGuides = rest.slice(0, -1); }
+    else { extraGuides = cur; selGuide = id; }
+  } else { selGuide = id; extraGuides = []; }
+  selIds = []; cellSel = null;
   for (const [, el] of els) el.classList.remove('sel');
   renderSelection(); renderPropBox(); renderUserGuides();
-  showTab('obj');
+  if (selGuide) showTab('obj');
 }
 function renderSelection() {
   layerSel.textContent = '';
@@ -769,12 +798,18 @@ scroller.addEventListener('pointerdown', e => {
   const sh = t.closest('.sh, .tl');
   if (sh) { startHandle(e, sh.dataset.h); return; }
   const gh = t.closest('.hit[data-gid]');
-  if (gh) { selectGuide(gh.dataset.gid); const f = findGuide(gh.dataset.gid); drag = { mode: 'guide', gid: gh.dataset.gid, moved: false, axis: f.g.axis, orig: f.g.pos }; return; }
+  if (gh) { const additive = e.shiftKey || e.metaKey || e.ctrlKey; selectGuide(gh.dataset.gid, additive); const f = findGuide(gh.dataset.gid); if (f && !f.g.lock && !additive) drag = { mode: 'guide', gid: gh.dataset.gid, moved: false, axis: f.g.axis, orig: f.g.pos }; return; }
   const itEl = t.closest('.it');
   if (itEl && itEl.parentElement === layerP) {
     const id = +itEl.dataset.id, it = findItem(id);
     if (it && !it.lock) {
-      if (it.type === 'table' && selIds.length === 1 && selIds[0] === id && editingId == null) { startCellSel(e, it); return; }
+      if (it.type === 'table' && editingId == null) {
+        if (selIds.length === 1 && selIds[0] === id) { startCellSel(e, it); return; }
+        startItemDrag(e, id); // 처음 누른 표: 표를 고르고(끌면 옮기고), 누른 칸도 함께 골라 둠 → 같은 칸을 한 번 더 누르면 글자 쓰기
+        const { r, c } = tableCellAt(it, toMM(e)), o = NP.tableGeom(it).owner[r][c];
+        cellSel = { id: it.id, r1: o.r, c1: o.c, r2: o.r + o.rs - 1, c2: o.c + o.cs - 1 }; renderSelection(); renderPropBox();
+        return;
+      }
       startItemDrag(e, id); return;
     }
   }
@@ -900,7 +935,9 @@ window.addEventListener('pointermove', e => {
     }
     let nw = Math.max(0.5, b.w + sx * dx), nh = Math.max(0.5, b.h + sy * dy), cropNew = null;
     const corner = sx && sy, isImg = drag.single && drag.orig.get(drag.ids[0]).type === 'image';
-    if (corner && (e.shiftKey || !drag.single || isImg)) { const k = Math.max(nw / b.w, nh / b.h); nw = b.w * k; nh = b.h * k; }
+    const o0 = drag.single ? drag.orig.get(drag.ids[0]) : null, itAr = !!(o0 && o0.ar && o0.type !== 'text' && !isImg);
+    if (corner && (e.shiftKey || !drag.single || isImg || itAr)) { const k = Math.max(nw / b.w, nh / b.h); nw = b.w * k; nh = b.h * k; }
+    if (itAr && !corner) { if (sx) nh = b.h * nw / b.w; else nw = b.w * nh / b.h; } // 비율 고정: 가장자리를 끌어도 다른 쪽이 따라옴
     if (isImg && !corner) { // 사진의 가장자리 손잡이 = 자르기
       const o = drag.orig.get(drag.ids[0]), FW = o.w / (1 - o.cl - o.cr), FH = o.h / (1 - o.ct - o.cb);
       let { cl, cr, ct, cb } = o;
@@ -911,7 +948,7 @@ window.addEventListener('pointermove', e => {
     if (drag.single) {
       const it = findItem(drag.ids[0]), o = drag.orig.get(it.id);
       if (it.type === 'text') nh = o._h;
-      if (!sx) nw = b.w; if (!sy) nh = b.h;
+      if (!sx && !itAr) nw = b.w; if (!sy && !itAr) nh = b.h;
       const [ox, oy] = [b.x + b.w / 2, b.y + b.h / 2];
       const [sh1, sh2] = rotPt(sx * (nw - b.w) / 2, sy * (nh - b.h) / 2, 0, 0, drag.rot0);
       const ncx = ox + sh1, ncy = oy + sh2;
@@ -938,7 +975,7 @@ function endDrag(cancel) {
   if (d.mode === 'draw') { finishDraw(d, cancel); return; }
   if (d.mode === 'newguide') {
     const g = tempGuide; tempGuide = null;
-    if (!cancel && !g.out) { mutate(() => { guideTarget().push({ id: g.id, axis: g.axis, pos: g.pos }); }); selGuide = g.id; renderPropBox(); }
+    if (!cancel && !g.out) { mutate(() => { guideTarget().push({ id: g.id, axis: g.axis, pos: g.pos, ...(g.color && g.color !== '#14b8d4' ? { color: g.color } : {}) }); }); selectGuide(g.id); renderGuideBox(); }
     renderUserGuides(); return;
   }
   if (d.mode === 'guide') {
@@ -1129,9 +1166,10 @@ function removeSel() {
   selIds = selIds.filter(i => !ids.includes(i)); cellSel = null; renderItems(); renderPropBox();
 }
 function removeSelGuide() {
-  const f = selGuide && findGuide(selGuide); if (!f) return;
-  mutate(() => { const arr = f.owner === 'page' ? curPage().guides : ctxMaster().guides; arr.splice(arr.indexOf(f.g), 1); });
-  selGuide = null; renderUserGuides(); renderPropBox();
+  const all = guideSel().map(findGuide).filter(Boolean), fs = all.filter(f => !f.g.lock);
+  if (!fs.length) { if (all.length) toast('잠긴 가이드선은 지울 수 없어요. 잠금을 풀어 주세요'); return; }
+  mutate(() => { for (const f of fs) { const arr = f.owner === 'page' ? curPage().guides : ctxMaster().guides; arr.splice(arr.indexOf(f.g), 1); } });
+  selGuide = null; extraGuides = []; renderUserGuides(); renderPropBox(); renderGuideBox();
 }
 function copySel() { const items = selItems(); if (!items.length) return false; clip = { items: JSON.parse(JSON.stringify(items)), key: ctxKey() }; pasteN = 0; renderPropBox(); return true; }
 function pasteClip() {
@@ -1243,6 +1281,7 @@ document.addEventListener('keydown', e => {
   if ((e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); if (selGuide) removeSelGuide(); else removeSel(); return; }
   const items = selItems().filter(i => !i.lock); if (!items.length) return;
   if (e.key === 'Enter' && items.length === 1 && items[0].type === 'text') { e.preventDefault(); enterEdit(items[0].id, false); return; }
+  if (e.key === 'Enter' && items.length === 1 && items[0].type === 'table' && cellSel && cellSel.id === items[0].id) { e.preventDefault(); enterCellEdit(items[0].id, expandRange(items[0], cellSel).r1 + ',' + expandRange(items[0], cellSel).c1); return; }
   const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   if (arrows[e.key]) {
     e.preventDefault();
@@ -1277,7 +1316,7 @@ function swatches(value, onPick) {
 const row = (label, ...kids) => h('div', { class: 'row' }, h('label', {}, label), ...kids);
 const btn = (label, fn, extra = {}) => h('button', { type: 'button', onclick: fn, ...extra }, label);
 
-function renderPanels() { renderKindBox(); renderPaperBox(); renderNumBox(); renderHoleBox(); renderMasterBox(); renderPropBox(); renderColorBox(); }
+function renderPanels() { renderKindBox(); renderPaperBox(); renderGuideBox(); renderNumBox(); renderHoleBox(); renderMasterBox(); renderPropBox(); renderColorBox(); }
 
 function renderPaperBox() {
   const b = $('#paperBox'); b.textContent = '';
@@ -1327,6 +1366,13 @@ function renderMasterBox() {
   b.append(row('칸 간격', stepper(g.size, { min: 2, max: 30, step: 0.5 }, v => set(() => { g.size = v; })), h('span', { class: 'unit' }, 'mm')));
   if (g.type === 'dot') b.append(row('도트 크기', stepper(g.dot || 0.6, { min: 0.2, max: 3, step: 0.1 }, v => set(() => { g.dot = v; }, 'gdot')), h('span', { class: 'unit' }, 'mm (지름)')));
   else if (g.type !== 'none') b.append(row('선 굵기', stepper(g.lw || 0.15, { min: 0.05, max: 1, step: 0.05 }, v => set(() => { g.lw = v; }, 'glw')), h('span', { class: 'unit' }, 'mm')));
+  b.append(h('div', { class: 'sub2' }, '모눈이 그려지는 범위 — 노트 가장자리에서 안쪽으로 비울 여백(mm)'));
+  { const ins = g.inset || { l: 0, t: 0, r: 0, b: 0 }, setIns = (k, v) => set(() => { g.inset = { ...ins, [k]: clamp(v, 0, 60) }; }, 'gins');
+    b.append(h('div', { class: 'numgrid' }, ...numField('위', ins.t, v => setIns('t', v)), ...numField('아래', ins.b, v => setIns('b', v)), ...numField('왼쪽', ins.l, v => setIns('l', v)), ...numField('오른쪽', ins.r, v => setIns('r', v))));
+    b.append(h('div', { class: 'btnrow' }, btn('노트 전체에 (여백 0)', () => set(() => { g.inset = { l: 0, t: 0, r: 0, b: 0 }; })), btn('안쪽 5mm부터', () => set(() => { g.inset = { l: 5, t: 5, r: 5, b: 5 }; }))));
+    b.append(row('시작 위치', seg([['center', '가운데 맞춤'], ['corner', '범위의 왼쪽 위부터']], g.start || 'center', v => set(() => { g.start = v; }))));
+    b.append(h('div', { class: 'numgrid' }, ...numField('가로 이동', g.dx || 0, v => set(() => { g.dx = clamp(v, -60, 60); }, 'gdx')), ...numField('세로 이동', g.dy || 0, v => set(() => { g.dy = clamp(v, -60, 60); }, 'gdy'))));
+    b.append(h('p', { class: 'hint' }, '여백을 주면 모눈이 그 안쪽 칸 안에서만 그려져요(도련·바깥 여백에는 안 그려짐). “왼쪽 위부터”는 범위의 모서리에서 첫 줄이 시작해요. 가로·세로 이동은 모눈을 mm 단위로 밀어요.')); }
   b.append(h('p', { class: 'hint' }, `가로 ${Math.floor(doc.page.w / g.size)}칸 × 세로 ${Math.floor(doc.page.h / g.size)}칸. 가장자리 여백이 같게 가운데 맞춰 그려져요.`));
   b.append(row('진하기', h('input', { type: 'range', min: 5, max: 100, value: g.tone, oninput: e => { g.tone = +e.target.value; snapshot('tone'); save(); renderBackdrop(); } })));
   b.append(row('모눈 색', swatches(g.color, c => set(() => { g.color = c; }))));
@@ -1378,29 +1424,71 @@ function numField(label, value, onChange, step = 0.5) {
   inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) onChange(v); else inp.value = r2(value); });
   return [h('label', {}, label), inp];
 }
+const guideColorBtns = (value, onPick) => h('span', { class: 'gcolors' }, NP.GUIDE_COLORS.map(([c, n]) => h('button', { type: 'button', class: c === value ? 'on' : '', style: `background:${c}`, title: n, 'aria-label': n, onclick: () => onPick(c) })));
+function renderGuideProps(b, ids) {
+  const fs = ids.map(findGuide).filter(Boolean), gl = fs.map(f => f.g), single = fs.length === 1, locked = gl.every(g => g.lock);
+  b.append(h('div', { class: 'sub2' }, single ? `가이드선 (${gl[0].axis === 'x' ? '세로선' : '가로선'}) — ${fs[0].owner === 'master' ? '바탕: 이 바탕을 쓰는 모든 쪽' : '이 쪽만'}${gl[0].lock ? ' · 잠김' : ''}` : `가이드선 ${fs.length}개 선택`));
+  if (single) b.append(h('div', { class: 'numgrid' }, ...numField('위치(mm)', gl[0].pos, v => { if (gl[0].lock) return toast('잠긴 가이드선이에요. 잠금을 풀어 주세요'); mutate(() => { gl[0].pos = r2(v); }); renderUserGuides(); renderPropBox(); })));
+  b.append(row('색', guideColorBtns(gl[0].color || '#14b8d4', c => { mutate(() => { for (const g of gl) { if (c === '#14b8d4') delete g.color; else g.color = c; } }); renderUserGuides(); renderPropBox(); })));
+  const m = masterById(curPage().master), btns = [btn(locked ? '잠금 풀기' : '잠금', () => { mutate(() => { for (const g of gl) { if (locked) delete g.lock; else g.lock = true; } }); renderUserGuides(); renderPropBox(); renderGuideBox(); }), btn('지우기', removeSelGuide), btn('묶음으로 저장…', () => saveGuideSet(gl))];
+  if (single && fs[0].owner === 'page' && m && !ui.editMaster) btns.push(btn('모든 쪽에 쓰기(바탕으로)', () => { const g = gl[0]; mutate(() => { const arr = curPage().guides; arr.splice(arr.indexOf(g), 1); m.guides.push(g); }); renderUserGuides(); renderPropBox(); }));
+  if (single && fs[0].owner === 'master' && !ui.editMaster) btns.push(btn('이 쪽에서만 쓰기', () => { const g = gl[0]; mutate(() => { m.guides.splice(m.guides.indexOf(g), 1); curPage().guides.push(g); }); renderUserGuides(); renderPropBox(); }));
+  b.append(h('div', { class: 'btnrow' }, btns));
+  b.append(h('p', { class: 'hint' }, 'Shift(또는 Cmd)를 누른 채 가이드선을 누르면 여러 개를 함께 고를 수 있어요. 가이드선은 인쇄되지 않아요.'));
+}
 function renderPropBox() {
   const b = $('#propBox'); b.textContent = '';
-  // 가이드선을 골랐을 때
-  const gsel = selGuide && findGuide(selGuide);
-  if (gsel) {
-    const g = gsel.g;
-    b.append(h('div', { class: 'sub2' }, `가이드선 (${g.axis === 'x' ? '세로선' : '가로선'}) — ${gsel.owner === 'master' ? '바탕: 이 바탕을 쓰는 모든 쪽' : '이 쪽만'}`));
-    b.append(h('div', { class: 'numgrid' }, ...numField('위치(mm)', g.pos, v => { mutate(() => { g.pos = r2(v); }); renderUserGuides(); renderPropBox(); })));
-    const m = masterById(curPage().master);
-    const btns = [btn('지우기', removeSelGuide)];
-    if (gsel.owner === 'page' && m && !ui.editMaster) btns.push(btn('모든 쪽에 쓰기(바탕으로)', () => { mutate(() => { const arr = curPage().guides; arr.splice(arr.indexOf(g), 1); m.guides.push(g); }); renderUserGuides(); renderPropBox(); }));
-    if (gsel.owner === 'master' && !ui.editMaster) btns.push(btn('이 쪽에서만 쓰기', () => { mutate(() => { m.guides.splice(m.guides.indexOf(g), 1); curPage().guides.push(g); }); renderUserGuides(); renderPropBox(); }));
-    b.append(h('div', { class: 'btnrow' }, btns));
-  }
-  const items = selItems();
-  if (!items.length && !gsel) b.append(h('p', { class: 'hint' }, '페이지 위의 글자·선·네모를 누르면 여기서 자세히 바꿀 수 있어요. 눈금자에서 끌어내면 가이드선이 만들어져요.'));
+  const gids = guideSel(), items = selItems();
+  if (gids.length) renderGuideProps(b, gids);
+  if (!items.length && !gids.length) b.append(h('p', { class: 'hint' }, '페이지 위의 글자·선·네모를 누르면 여기서 자세히 바꿀 수 있어요. 눈금자에서 끌어내면 가이드선이 만들어져요. (가이드선 도구는 “문서·쪽” 탭의 “가이드선”에 있어요)'));
   if (items.length) renderItemProps(b, items);
-  if (!gsel && !items.length) {
-    b.append(h('div', { class: 'sub2' }, '가이드선을 새로 만들 때'));
-    const m = masterById(curPage().master);
-    b.append(row('범위', seg([['page', '이 쪽만'], ['master', '모든 쪽(바탕)']], ui.editMaster ? 'master' : (m ? ui.guideScope : 'page'), v => { if (ui.editMaster || !m) return; ui.guideScope = v; renderPropBox(); })));
-  }
   renderObjList(b);
+}
+/* ---- 가이드선 도구: 자동 나누기 · 묶음 저장/불러오기 ---- */
+function autoDivide(axis, n) { // axis 'y' = 가로선(위아래로 나눔), 'x' = 세로선(좌우로 나눔)
+  n = clamp(Math.round(n) || 2, 2, 24);
+  const sf = ui.divArea === 'safe' ? doc.safe : 0, len = axis === 'x' ? doc.page.w : doc.page.h, a = sf, bb = len - sf, list = guideTarget();
+  let made = 0;
+  mutate(() => { for (let i = 1; i < n; i++) { const pos = r2(a + (bb - a) * i / n); if (list.some(g => g.axis === axis && Math.abs(g.pos - pos) < 0.05)) continue; list.push({ id: newUid('g'), axis, pos, ...(ui.guideColor !== '#14b8d4' ? { color: ui.guideColor } : {}) }); made++; } });
+  renderUserGuides(); renderGuideBox(); toast(made ? `${axis === 'x' ? '세로' : '가로'}선 ${made}개를 만들었어요 (${n}등분)` : '이미 같은 자리에 가이드선이 있어요');
+}
+function saveGuideSet(list) {
+  if (!list.length) return toast('저장할 가이드선이 없어요');
+  const name = (prompt('가이드 묶음 이름', `가이드 묶음 ${doc.guideSets.length + 1}`) || '').trim(); if (!name) return;
+  mutate(() => { doc.guideSets.push({ id: newUid('S'), name, guides: list.map(g => ({ axis: g.axis, pos: g.pos, ...(g.color ? { color: g.color } : {}) })) }); });
+  renderGuideBox(); toast(`“${name}” 묶음을 저장했어요 (${list.length}개)`);
+}
+function loadGuideSet(set, replace) {
+  const list = guideTarget();
+  mutate(() => {
+    if (replace) for (let i = list.length - 1; i >= 0; i--) if (!list[i].lock) list.splice(i, 1);
+    for (const g of set.guides) if (!list.some(x => x.axis === g.axis && Math.abs(x.pos - g.pos) < 0.05)) list.push({ id: newUid('g'), axis: g.axis, pos: g.pos, ...(g.color ? { color: g.color } : {}) });
+  });
+  renderUserGuides(); renderGuideBox(); toast(`“${set.name}” 묶음을 ${replace ? '바꿔 넣었어요' : '더했어요'}`);
+}
+function renderGuideBox() {
+  const b = $('#guideBox'); if (!b) return; b.textContent = '';
+  const m = masterById(curPage().master), tg = guideTarget();
+  b.append(row('만들 곳', seg([['page', '이 쪽만'], ['master', '모든 쪽(바탕)']], ui.editMaster ? 'master' : (m ? ui.guideScope : 'page'), v => { if (ui.editMaster || !m) return; ui.guideScope = v; renderGuideBox(); })));
+  b.append(row('새 가이드 색', guideColorBtns(ui.guideColor, c => { ui.guideColor = c; renderGuideBox(); })));
+  b.append(h('div', { class: 'sub2' }, '자동으로 나누기'));
+  b.append(row('기준', seg([['page', '노트 전체'], ['safe', '안전선 안쪽']], ui.divArea, v => { ui.divArea = v; renderGuideBox(); })));
+  const nIn = (axis) => { const inp = h('input', { type: 'number', min: 2, max: 24, value: 5, style: 'width:56px' }); return [inp, btn('나누기', () => autoDivide(axis, +inp.value))]; };
+  b.append(row('위아래로 (가로선)', [2, 3, 4].map(n => btn(`${n}등분`, () => autoDivide('y', n))), ...nIn('y')));
+  b.append(row('좌우로 (세로선)', [2, 3, 4].map(n => btn(`${n}등분`, () => autoDivide('x', n))), ...nIn('x')));
+  b.append(h('p', { class: 'hint' }, '“위아래로 3등분”은 가로선 2개를 그어 노트를 위아래 3칸으로 나눠요. 자동으로 만든 뒤 눈금자에서 끌어내 하나씩 더 추가할 수 있어요.'));
+  b.append(h('div', { class: 'btnrow' }, btn(`여기(${ui.editMaster ? '바탕' : (m && ui.guideScope === 'master' ? '바탕' : '이 쪽')})의 가이드선 전부 잠금`, () => { mutate(() => { for (const g of tg) g.lock = true; }); renderUserGuides(); renderGuideBox(); }, { disabled: !tg.length }),
+    btn('전부 잠금 풀기', () => { mutate(() => { for (const g of tg) delete g.lock; }); renderUserGuides(); renderGuideBox(); }, { disabled: !tg.some(g => g.lock) }),
+    btn('잠기지 않은 것 모두 지우기', () => { mutate(() => { for (let i = tg.length - 1; i >= 0; i--) if (!tg[i].lock) tg.splice(i, 1); }); selGuide = null; extraGuides = []; renderUserGuides(); renderGuideBox(); renderPropBox(); }, { disabled: !tg.some(g => !g.lock) })));
+  b.append(h('div', { class: 'sub2' }, '가이드 묶음 (저장해 두고 다른 쪽에서 불러오기)'));
+  b.append(h('div', { class: 'btnrow' }, btn('여기의 가이드선 전부를 묶음으로 저장…', () => saveGuideSet(tg), { disabled: !tg.length }), btn('고른 가이드선만 묶음으로 저장…', () => saveGuideSet(guideSel().map(findGuide).filter(Boolean).map(f => f.g)), { disabled: !guideSel().length })));
+  if (!doc.guideSets.length) b.append(h('p', { class: 'hint' }, '저장한 묶음이 아직 없어요. 가로·세로 가이드선을 만든 뒤 위 단추로 저장하면, 다른 쪽에서 불러올 수 있어요.'));
+  for (const set of doc.guideSets) {
+    const hn = set.guides.filter(g => g.axis === 'y').length, vn = set.guides.filter(g => g.axis === 'x').length;
+    b.append(h('div', { class: 'gsetrow' }, h('span', { class: 'nm' }, `${set.name} (가로 ${hn} · 세로 ${vn})`), btn('더하기', () => loadGuideSet(set, false)), btn('바꾸기', () => loadGuideSet(set, true)),
+      btn('지우기', () => { if (!confirm(`“${set.name}” 묶음을 지울까요? (노트 위의 가이드선은 그대로예요)`)) return; mutate(() => { doc.guideSets = doc.guideSets.filter(x => x !== set); }); renderGuideBox(); })));
+  }
+  b.append(h('p', { class: 'hint' }, '“더하기”는 지금 있는 가이드선에 묶음을 더하고, “바꾸기”는 잠기지 않은 가이드선을 지우고 묶음으로 바꿔요. 위의 “만들 곳”(이 쪽/바탕)에 적용돼요.'));
 }
 /* ---- 표 편집 도우미: 행·열 넣기/지우기, 칸 합치기, 칸 서식 ---- */
 function tblSync(it) { it.w = r2(it.cw.reduce((a, b) => a + b, 0)); it.h = r2(it.rh.reduce((a, b) => a + b, 0)); }
@@ -1450,6 +1538,20 @@ function cellPatch(it, patch) {
   }, 'cell' + Object.keys(patch).join(''));
   refreshItems([it.id]); renderPropBox();
 }
+function setTableDims(it, R, C) { // 행 수·열 수를 숫자로 바꾸기 (늘리면 끝에 추가, 줄이면 끝에서 삭제)
+  if (it.lock) return toast('잠긴 개체는 바꿀 수 없어요. 잠금을 풀어 주세요');
+  R = clamp(Math.round(R), 1, 80); C = clamp(Math.round(C), 1, 40);
+  const g = NP.tableGeom(it);
+  const lost = Object.entries(it.cells || {}).some(([k, v]) => { const [r, c] = k.split(',').map(Number); return (r >= R || c >= C) && v && v.text; });
+  if (lost && !confirm('줄이면 지워지는 칸에 글자가 있어요. 계속할까요?\n(“되돌리기”로 되살릴 수 있어요)')) { renderPropBox(); return; }
+  mutate(() => {
+    while (it.rh.length < R) tblInsert(it, 'row', it.rh.length);
+    while (it.rh.length > R) tblDelete(it, 'row', it.rh.length - 1);
+    while (it.cw.length < C) tblInsert(it, 'col', it.cw.length);
+    while (it.cw.length > C) tblDelete(it, 'col', it.cw.length - 1);
+  });
+  cellSel = null; refreshItems([it.id]); renderPropBox();
+}
 function renderItemProps(b, items) {
   const primary = items[items.length - 1], same = items.every(i => i.type === primary.type);
   const ids = items.map(i => i.id);
@@ -1462,8 +1564,8 @@ function renderItemProps(b, items) {
   b.append(h('div', { class: 'sub2' }, items.length === 1 ? `${typeName(primary)} 1개 선택${primary.lock ? ' (잠김)' : ''}` : `${items.length}개 선택${items.some(i => i.gid) ? ' (묶음 포함)' : ''}`));
 
   // 위치·크기·회전
-  const setW = (it, v) => { if (it.type === 'table') { const o = JSON.parse(JSON.stringify(it)); it.w = Math.max(4, r2(v)); rescaleTable(it, o); } else it.w = Math.max(0.5, r2(v)); };
-  const setH = (it, v) => { if (it.type === 'table') { const o = JSON.parse(JSON.stringify(it)); it.h = Math.max(4, r2(v)); rescaleTable(it, o); } else it.h = Math.max(0.5, r2(v)); };
+  const setW = (it, v) => { const o = JSON.parse(JSON.stringify(it)); it.w = Math.max(it.type === 'table' ? 4 : 0.5, r2(v)); if (it.ar && it.type !== 'text') it.h = r2(o.h * it.w / o.w); if (it.type === 'table') rescaleTable(it, o); };
+  const setH = (it, v) => { const o = JSON.parse(JSON.stringify(it)); it.h = Math.max(it.type === 'table' ? 4 : 0.5, r2(v)); if (it.ar && it.type !== 'text') it.w = r2(o.w * it.h / o.h); if (it.type === 'table') rescaleTable(it, o); };
   const nums = [];
   if (items.length === 1 && primary.type === 'line') {
     nums.push(...numField('시작 X', primary.x1, v => upd(it => { it.x1 = r2(v); })), ...numField('시작 Y', primary.y1, v => upd(it => { it.y1 = r2(v); })),
@@ -1485,6 +1587,7 @@ function renderItemProps(b, items) {
       ...numField('가로', ub.w, v => apply(ub.x, ub.y, Math.max(0.5, v), ub.h)), ...numField('세로', ub.h, v => apply(ub.x, ub.y, ub.w, Math.max(0.5, v))));
   }
   b.append(h('div', { class: 'numgrid' }, nums));
+  if (items.every(i => ['shape', 'path', 'table', 'image'].includes(i.type))) { const arOn = items.every(i => i.ar); b.append(h('div', { class: 'btnrow' }, btn(arOn ? '🔗 가로세로 비율 고정: 켜짐' : '🔓 가로세로 비율 고정: 꺼짐', () => upd(it => { it.ar = !arOn; }), { class: arOn ? 'on' : '' }))); }
 
   // 정렬
   b.append(h('div', { class: 'sub2' }, '정렬'));
@@ -1525,7 +1628,10 @@ function renderItemProps(b, items) {
   } else if (primary.type === 'shape' || primary.type === 'path') {
     const closed = NP.isClosedShape(primary);
     if (primary.type === 'path') b.append(row('곡선', seg([[0, '열린 곡선'], [1, '닫힌 곡선']], primary.closed ? 1 : 0, v => upd(it => { it.closed = !!v; if (!it.closed) { it.fill = null; it.pat = null; } }))));
-    if (primary.type === 'shape' && primary.kind === 'rect') b.append(row('모서리', h('select', { onchange: e => upd(it => { it.r = +e.target.value; }) }, [[0, '각지게'], [2, '살짝 둥글게'], [4, '둥글게'], [8, '많이 둥글게'], [20, '아주 둥글게']].map(([v, l]) => h('option', { value: v, selected: primary.r === v }, l)))));
+    if (primary.type === 'shape' && primary.kind === 'rect') {
+      b.append(row('모서리 둥글기', stepper(primary.r || 0, { min: 0, max: 100, step: 0.5 }, v => upd(it => { it.r = v; }, 'rad')), h('span', { class: 'unit' }, 'mm')));
+      b.append(h('div', { class: 'btnrow' }, btn('각지게', () => upd(it => { it.r = 0; })), btn('살짝', () => upd(it => { it.r = 2; })), btn('둥글게', () => upd(it => { it.r = 5; })), btn('완전히 둥글게(알약·원)', () => upd(it => { it.r = r2(Math.min(it.w, it.h) / 2); }))));
+    }
     if (primary.type === 'shape' && primary.kind === 'star') b.append(row('꼭짓점 수', stepper(primary.pts, { min: 3, max: 12, step: 1 }, v => upd(it => { it.pts = Math.round(v); }, 'pts'))));
     b.append(row('테두리', seg([[1, '있음'], [0, '없음']], primary.stroke !== false ? 1 : 0, v => upd(it => { it.stroke = !!v; }))));
     if (primary.stroke !== false) { b.append(color('테두리 색')); b.append(row('굵기', thickSel())); b.append(row('모양', dashSeg())); }
@@ -1558,7 +1664,8 @@ function renderItemProps(b, items) {
     if (!single) { b.append(h('p', { class: 'hint' }, '표는 하나씩 골라야 칸을 고칠 수 있어요.')); b.append(row('선 굵기', thickSel())); b.append(row('선 모양', dashSeg())); b.append(color('선 색')); return; }
     const op = fn => { if (it.lock) return toast('잠긴 개체는 바꿀 수 없어요. 잠금을 풀어 주세요'); mutate(fn); cellSel = null; refreshItems([it.id]); renderPropBox(); };
     b.append(h('p', { class: 'hint' }, '표를 고른 뒤 칸을 누르면 칸이 선택되고(끌면 여러 칸), 한 번 더 누르거나 두 번 누르면 글자를 쓸 수 있어요. 표를 옮길 때는 왼쪽 위의 ✥ 손잡이를 끄세요. 칸 사이 선을 끌면 너비·높이가 바뀌어요.'));
-    b.append(row('크기', h('span', { class: 'unit' }, `${g.R}행 × ${g.C}열`)));
+    b.append(row('행 × 열', stepper(g.R, { min: 1, max: 80, step: 1 }, v => setTableDims(it, v, g.C)), h('span', { class: 'unit' }, '행 ×'), stepper(g.C, { min: 1, max: 40, step: 1 }, v => setTableDims(it, g.R, v)), h('span', { class: 'unit' }, '열')));
+    b.append(h('div', { class: 'btnrow' }, btn('✎ 이 칸에 글자 쓰기', () => { if (it.lock) return toast('잠긴 개체는 바꿀 수 없어요'); const r0 = rg || { r1: 0, c1: 0 }; if (!rg) { cellSel = { id: it.id, r1: 0, c1: 0, r2: 0, c2: 0 }; } enterCellEdit(it.id, r0.r1 + ',' + r0.c1); }, { class: 'primary' })));
     const rowsN = rg ? rg.r2 - rg.r1 + 1 : 0, colsN = rg ? rg.c2 - rg.c1 + 1 : 0;
     b.append(h('div', { class: 'btnrow' },
       btn('위에 행 추가', () => op(() => tblInsert(it, 'row', rg ? rg.r1 : 0))), btn('아래에 행 추가', () => op(() => tblInsert(it, 'row', rg ? rg.r2 + 1 : g.R))),
@@ -1998,7 +2105,7 @@ function renderMy() {
       btn('지우기', () => { if (!confirm(`“${n}”을(를) 지울까요?`)) return; delete saved[n]; lsSet(LS.saved, saved); renderMy(); })));
   }
 }
-function loadDoc(obj) { snapshot(); endEdit(true); doc = normalize(obj); ui.pageIdx = 0; ui.editMaster = false; selIds = []; selGuide = null; zoom = 1; renderAll(); save(); }
+function loadDoc(obj) { snapshot(); endEdit(true); doc = normalize(obj); ui.pageIdx = 0; ui.editMaster = false; selIds = []; selGuide = null; zoom = 1; renderAll(); save(); markBackup(); }
 $('#myBtn').onclick = openMy;
 $('#myClose').onclick = () => closeModal('#myModal');
 $('#saveCur').onclick = () => {
@@ -2007,7 +2114,7 @@ $('#saveCur').onclick = () => {
   if (saved[name] && !confirm(`“${name}”이(가) 이미 있어요. 덮어쓸까요?`)) return;
   saved[name] = { t: Date.now(), state: doc };
   if (!lsSet(LS.saved, saved)) { toast('저장 공간이 부족해요. 파일로 내보내기를 써 주세요'); return; }
-  renderMy(); toast(`“${name}”로 저장했어요`);
+  markBackup(); renderMy(); toast(`“${name}”로 저장했어요`);
 };
 const allItems = d => [...d.masters.flatMap(m => m.items), ...d.pages.flatMap(p => p.items)];
 const blobToDataURL = b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
@@ -2016,7 +2123,7 @@ $('#exportBtn').onclick = async () => {
   for (const id of new Set(allItems(doc).filter(i => i.type === 'image').map(i => i.src))) { const b = await idbGet(id).catch(() => null); if (b) images[id] = { type: b.type, data: await blobToDataURL(b) }; }
   const blob = new Blob([JSON.stringify({ noteprint: 4, doc, images })], { type: 'application/json' });
   const a = h('a', { href: URL.createObjectURL(blob), download: `노트인쇄-${doc.page.w}x${doc.page.h}.json` });
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); markBackup(); toast('파일로 내보냈어요');
 };
 $('#importBtn').onclick = () => $('#importFile').click();
 $('#importFile').onchange = async e => {
@@ -2159,6 +2266,8 @@ $('#newModal').addEventListener('pointerdown', e => { if (e.target === $('#newMo
 /* ---------- 시작 ---------- */
 updateUndo();
 renderAll();
+markBackup();
+{ const el = $('#saveState'); if (el) el.textContent = '✔ 자동 저장 켜짐'; const chk = $('#confirmCloseChk'); if (chk) { chk.checked = confirmCloseOn(); chk.onchange = () => lsSet('noteprint.confirmClose', chk.checked); } }
 if (!lsGet(LS.cur, null) && !lsGet(LS.cur1, null) && !lsGet('noteprint.seen', false)) { lsSet('noteprint.seen', true); openNew(); }
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
 window.__noteprint = { getImage: idbGet, get doc() { return doc; }, get ui() { return ui; }, get sel() { return selIds; }, get layout() { return layoutCalc(); } };

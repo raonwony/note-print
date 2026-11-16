@@ -204,4 +204,19 @@
     if (hh === 'center') { x = (W - bw) / 2; align = 'center'; } else if (rightPage) { x = W - m - bw; align = 'right'; } else { x = m; align = 'left'; }
     return { type: 'text', id: -1, x, y: vv === 'top' ? m : H - m - lineH, w: bw, text: String((pn.start || 1) + idx), pt: pn.pt, bold: false, align, font: pn.font || 'pretendard', color: pn.color || 'k100', lh: 0, rot: 0, lock: true, hide: false, gid: null };
   };
+
+  /* ---------- 모눈 그리는 범위·시작 위치 ---------- */
+  NP.gridPlan = (w, h, g, bleed) => {
+    const s = g.size, I = g.inset || { l: 0, t: 0, r: 0, b: 0 }, r3 = v => Math.round(v * 1000) / 1000;
+    const tx0 = I.l, tx1 = w - I.r, ty0 = I.t, ty1 = h - I.b;
+    const ax0 = I.l > 0 ? tx0 : -bleed, ax1 = I.r > 0 ? tx1 : w + bleed, ay0 = I.t > 0 ? ty0 : -bleed, ay1 = I.b > 0 ? ty1 : h + bleed;
+    let ox, oy;
+    if (g.start === 'corner') { ox = tx0; oy = ty0; } else { ox = tx0 + ((tx1 - tx0) % s) / 2; oy = ty0 + ((ty1 - ty0) % s) / 2; }
+    ox += g.dx || 0; oy += g.dy || 0;
+    const xs = [], ys = [];
+    for (let i = Math.ceil((ax0 - ox) / s - 1e-9); i <= Math.floor((ax1 - ox) / s + 1e-9); i++) xs.push(r3(ox + i * s));
+    for (let i = Math.ceil((ay0 - oy) / s - 1e-9); i <= Math.floor((ay1 - oy) / s + 1e-9); i++) ys.push(r3(oy + i * s));
+    return { xs, ys, ox, oy, ax0, ax1, ay0, ay1 };
+  };
+  NP.GUIDE_COLORS = [['#14b8d4', '하늘'], ['#2563eb', '파랑'], ['#16a34a', '초록'], ['#f59e0b', '주황'], ['#9333ea', '보라'], ['#e11d48', '분홍']];
 })();
