@@ -194,15 +194,17 @@
   NP.cellStyle = (it, key) => ({ font: 'pretendard', pt: 9, bold: false, align: 'left', valign: 'top', color: 'k100', text: '', fill: null, ...((it.cells || {})[key] || {}) });
 
   /* ---------- 쪽 번호 (한 번에 자동 + 쪽마다 예외) ---------- */
+  // 안전 여백: 기본값(doc.safe)을 네 면에 똑같이 쓰고, 면마다 따로 정한 값(doc.safeSides)이 있으면 그 값을 써요
+  NP.safeOf = doc => { const s = doc.safe || 0, o = doc.safeSides || {}, v = k => (o[k] >= 0 ? o[k] : s); return { t: v('t'), r: v('r'), b: v('b'), l: v('l') }; };
   NP.pageNumItem = (doc, idx, pg) => {
     const pn = doc.pageNum; pg = pg || doc.pages[idx];
     if (!pn || !pn.on || !pg) return null;
     const ov = pg.num || {}; if (ov.off) return null;
-    const hh = ov.h || pn.h, vv = ov.v || pn.v, W = doc.page.w, H = doc.page.h, m = Math.max(doc.safe, 4), bw = 24, lineH = pn.pt * NP.MM_PT * 1.35;
+    const hh = ov.h || pn.h, vv = ov.v || pn.v, W = doc.page.w, H = doc.page.h, sf = NP.safeOf(doc), mL = Math.max(sf.l, 4), mR = Math.max(sf.r, 4), mT = Math.max(sf.t, 4), mB = Math.max(sf.b, 4), bw = 24, lineH = pn.pt * NP.MM_PT * 1.35;
     const rightPage = idx % 2 === 0; // 1쪽·3쪽… 은 펼친 책의 오른쪽 페이지
     let x, align;
-    if (hh === 'center') { x = (W - bw) / 2; align = 'center'; } else if (rightPage) { x = W - m - bw; align = 'right'; } else { x = m; align = 'left'; }
-    return { type: 'text', id: -1, x, y: vv === 'top' ? m : H - m - lineH, w: bw, text: String((pn.start || 1) + idx), pt: pn.pt, bold: false, align, font: pn.font || 'pretendard', color: pn.color || 'k100', lh: 0, rot: 0, lock: true, hide: false, gid: null };
+    if (hh === 'center') { x = (W - bw) / 2; align = 'center'; } else if (rightPage) { x = W - mR - bw; align = 'right'; } else { x = mL; align = 'left'; }
+    return { type: 'text', id: -1, x, y: vv === 'top' ? mT : H - mB - lineH, w: bw, text: String((pn.start || 1) + idx), pt: pn.pt, bold: false, align, font: pn.font || 'pretendard', color: pn.color || 'k100', lh: 0, rot: 0, lock: true, hide: false, gid: null };
   };
 
   /* ---------- 모눈 그리는 범위·시작 위치 ---------- */

@@ -85,7 +85,7 @@ function normalize(s) {
     src = { page: s.page, snap: g.snap !== false, masters: [{ id: 'm1', name: '바탕 1', grid: { type: g.type, size: g.size, tone: g.tone }, items: [] }], pages: [{ id: 'p1', master: 'm1', items: s.items }] };
   }
   const old = !(src.v >= 3);
-  const o = { v: 5, kind: ['free', 'binder', 'bound'].includes(src.kind) ? src.kind : 'free', page: { ...d.page, ...src.page }, bleed: clamp(+src.bleed >= 0 ? +src.bleed : 5, 0, 10), safe: clamp(+src.safe >= 0 ? +src.safe : 5, 0, 20), snap: src.snap !== false, colors: d.colors, masters: [], pages: [] };
+  const o = { v: 5, kind: ['free', 'binder', 'bound'].includes(src.kind) ? src.kind : 'free', page: { ...d.page, ...src.page }, bleed: clamp(+src.bleed >= 0 ? +src.bleed : 5, 0, 10), safe: clamp(+src.safe >= 0 ? +src.safe : 5, 0, 20), ...(src.safeSides && typeof src.safeSides === 'object' ? { safeSides: Object.fromEntries(['t', 'r', 'b', 'l'].filter(k => +src.safeSides[k] >= 0).map(k => [k, clamp(+src.safeSides[k], 0, 20)])) } : {}), snap: src.snap !== false, colors: d.colors, masters: [], pages: [] };
   o.page.w = clamp(+o.page.w || d.page.w, 20, 500); o.page.h = clamp(+o.page.h || d.page.h, 20, 500);
   { // 색 목록: 기본·브랜드 색은 항상 있고(브랜드 색은 고친 값 유지), 그 밖의 색은 "내 색"으로 남김
     const saved = Array.isArray(src.colors) ? src.colors.filter(q => q && typeof q.id === 'string') : [];
@@ -163,7 +163,7 @@ function normalize(s) {
     return out;
   };
   const gcolors = NP.GUIDE_COLORS.map(x => x[0]);
-  const guides = arr => (Array.isArray(arr) ? arr : []).filter(g => g && (g.axis === 'x' || g.axis === 'y') && Number.isFinite(+g.pos)).map((g, i) => ({ id: String(g.id || 'g' + i + Math.random().toString(36).slice(2, 6)), axis: g.axis, pos: +g.pos, ...(gcolors.includes(g.color) ? { color: g.color } : {}), ...(g.lock ? { lock: true } : {}) }));
+  const guides = arr => (Array.isArray(arr) ? arr : []).filter(g => g && (g.axis === 'x' || g.axis === 'y') && Number.isFinite(+g.pos)).map((g, i) => ({ id: String(g.id || 'g' + i + Math.random().toString(36).slice(2, 6)), axis: g.axis, pos: +g.pos, ...(gcolors.includes(g.color) ? { color: g.color } : {}), ...(g.lock ? { lock: true } : {}), ...(typeof g.gid === 'string' && g.gid ? { gid: g.gid } : {}) }));
   const mids = new Set();
   for (const m of src.masters || []) {
     if (!m) continue;
@@ -477,7 +477,7 @@ function renderBackdrop() {
 function renderGuides() { // 재단선·도련·안전선 안내선
   const old = pageEl.querySelector('svg.guides'); if (old) old.remove();
   if (!ui.guides) return;
-  const { w, h: ph } = doc.page, b = doc.bleed, sf = doc.safe;
+  const { w, h: ph } = doc.page, b = doc.bleed, sf = NP.safeOf(doc);
   const svg = svgEl('svg', { class: 'guides', viewBox: `${-b} ${-b} ${w + 2 * b} ${ph + 2 * b}`, preserveAspectRatio: 'none' });
   svg.style.cssText = `left:${U(-b)};top:${U(-b)};width:${U(w + 2 * b)};height:${U(ph + 2 * b)}`;
   const rect = (x, y, ww, hh, stroke, dash, sw = 1) => svg.append(svgEl('rect', { x, y, width: ww, height: hh, fill: 'none', stroke, 'stroke-width': sw, 'vector-effect': 'non-scaling-stroke', ...(dash ? { 'stroke-dasharray': '6 4' } : {}) }));
@@ -489,7 +489,7 @@ function renderGuides() { // 재단선·도련·안전선 안내선
     svg.append(svgEl('path', { d: `M${-b} ${-b}h${w + 2 * b}v${ph + 2 * b}h${-(w + 2 * b)}z M0 0v${ph}h${w}v${-ph}z`, 'fill-rule': 'evenodd', fill: 'url(#bleedHatch)' }));
     rect(-b, -b, w + 2 * b, ph + 2 * b, '#e5484d', true, 1.4); // 도련 끝(바깥 빨간 점선)
   }
-  if (sf > 0) rect(sf, sf, w - 2 * sf, ph - 2 * sf, '#1f6fd0', true, 2); // 안전선(파란 점선)
+  if (sf.l + sf.r + sf.t + sf.b > 0) rect(sf.l, sf.t, w - sf.l - sf.r, ph - sf.t - sf.b, '#1f6fd0', true, 2); // 안전선(파란 점선)
   if (doc.holes.on && doc.kind !== 'bound') { // 링 구멍 가이드: 홀수 쪽=왼쪽 가장자리, 짝수 쪽=오른쪽 가장자리, 세로는 가운데 기준 대칭
     const hl = doc.holes, left = ui.editMaster || ui.pageIdx % 2 === 0, hx = left ? hl.edge : w - hl.edge, span = hl.gaps.reduce((a, c) => a + c, 0);
     let y = (ph - span) / 2;
@@ -620,12 +620,17 @@ function select(ids) {
   renderSelection(); renderPropBox(); renderUserGuides();
   if (selIds.length) showTab('obj'); else if (ui.tab === 'obj' && !ui.tabManual) showTab('doc');
 }
+function guideGroupOf(id) { // 같은 묶음의 가이드선들 (묶음이 아니면 자기 자신만)
+  const f = findGuide(id); if (!f) return [];
+  return f.g.gid ? allGuides().filter(x => x.g.gid === f.g.gid).map(x => x.g.id) : [id];
+}
 function selectGuide(id, additive) {
+  const grp = guideGroupOf(id);
   if (additive && selGuide) {
     const cur = guideSel();
-    if (cur.includes(id)) { const rest = cur.filter(x => x !== id); selGuide = rest[rest.length - 1] || null; extraGuides = rest.slice(0, -1); }
-    else { extraGuides = cur; selGuide = id; }
-  } else { selGuide = id; extraGuides = []; }
+    if (cur.includes(id)) { const rest = cur.filter(x => !grp.includes(x)); selGuide = rest[rest.length - 1] || null; extraGuides = rest.slice(0, -1); }
+    else { selGuide = id; extraGuides = [...cur, ...grp.filter(x => x !== id)]; }
+  } else { selGuide = id; extraGuides = grp.filter(x => x !== id); }
   selIds = []; cellSel = null;
   for (const [, el] of els) el.classList.remove('sel');
   renderSelection(); renderPropBox(); renderUserGuides();
@@ -704,7 +709,7 @@ function startCellSel(e, it) {
 /* ---------- 따라붙기(스냅) · 스마트 가이드 ---------- */
 function buildCands(excl) {
   const xs = [], ys = [], W = doc.page.w, H = doc.page.h;
-  if (ui.smart) { xs.push(0, W / 2, W); ys.push(0, H / 2, H); if (doc.safe > 0) { xs.push(doc.safe, W - doc.safe); ys.push(doc.safe, H - doc.safe); } }
+  if (ui.smart) { xs.push(0, W / 2, W); ys.push(0, H / 2, H); const sf = NP.safeOf(doc); if (sf.l > 0) xs.push(sf.l); if (sf.r > 0) xs.push(W - sf.r); if (sf.t > 0) ys.push(sf.t); if (sf.b > 0) ys.push(H - sf.b); }
   if (ui.userGuides) for (const { g } of allGuides()) (g.axis === 'x' ? xs : ys).push(g.pos);
   if (ui.smart) for (const it of ctxItems()) {
     if (excl.has(it.id) || it.hide) continue;
@@ -804,7 +809,7 @@ scroller.addEventListener('pointerdown', e => {
   const sh = t.closest('.sh, .tl');
   if (sh) { startHandle(e, sh.dataset.h); return; }
   const gh = t.closest('.hit[data-gid]');
-  if (gh) { const additive = e.shiftKey || e.metaKey || e.ctrlKey; selectGuide(gh.dataset.gid, additive); const f = findGuide(gh.dataset.gid); if (f && !f.g.lock && !additive) drag = { mode: 'guide', gid: gh.dataset.gid, moved: false, axis: f.g.axis, orig: f.g.pos }; return; }
+  if (gh) { const additive = e.shiftKey || e.metaKey || e.ctrlKey; selectGuide(gh.dataset.gid, additive); const f = findGuide(gh.dataset.gid); if (f && !f.g.lock && !additive) { const ms = guideSel().map(findGuide).filter(x => x && !x.g.lock && x.g.axis === f.g.axis).map(x => ({ g: x.g, p0: x.g.pos })); drag = { mode: 'guide', gid: gh.dataset.gid, moved: false, axis: f.g.axis, orig: f.g.pos, ms }; } return; }
   const itEl = t.closest('.it');
   if (itEl && itEl.parentElement === layerP) {
     const id = +itEl.dataset.id, it = findItem(id);
@@ -868,7 +873,8 @@ window.addEventListener('pointermove', e => {
   if (drag.mode === 'guide') {
     const f = findGuide(drag.gid); if (!f) return;
     if (!drag.moved) { snapshot(); drag.moved = true; }
-    const p = toMM(e); f.g.pos = r2(drag.axis === 'x' ? p.x : p.y);
+    const p = toMM(e), np = r2(drag.axis === 'x' ? p.x : p.y);
+    if (drag.ms.length > 1) { const dl = np - drag.orig; for (const m of drag.ms) m.g.pos = r2(m.p0 + dl); } else f.g.pos = np; // 묶음이면 모두 같은 만큼 움직여요
     const sr = scroller.getBoundingClientRect(); drag.out = e.clientX < sr.left || e.clientX > sr.right || e.clientY < sr.top || e.clientY > sr.bottom;
     renderUserGuides(); return;
   }
@@ -985,7 +991,8 @@ function endDrag(cancel) {
     renderUserGuides(); return;
   }
   if (d.mode === 'guide') {
-    if (d.moved && d.out) { const f = findGuide(d.gid); if (f) { const arr = f.owner === 'page' ? curPage().guides : ctxMaster().guides; arr.splice(arr.indexOf(f.g), 1); } selGuide = null; save(); renderPropBox(); }
+    if (d.moved && d.out && d.ms.length > 1) { for (const m of d.ms) m.g.pos = m.p0; toast('묶음은 화면 밖으로 끌어도 지워지지 않아요'); save(); renderPropBox(); }
+    else if (d.moved && d.out) { const f = findGuide(d.gid); if (f) { const arr = f.owner === 'page' ? curPage().guides : ctxMaster().guides; arr.splice(arr.indexOf(f.g), 1); } selGuide = null; save(); renderPropBox(); }
     else if (d.moved) { save(); renderPropBox(); }
     renderUserGuides(); return;
   }
@@ -1347,7 +1354,13 @@ function renderPaperBox() {
         lsSet(LS.sizes, list); renderPaperBox(); toast(`“${name}” 크기를 저장했어요`);
       }) : null)));
   b.append(row('도련', stepper(doc.bleed, { min: 0, max: 10, step: 1 }, v => { mutate(() => { doc.bleed = v; }); zoom = 1; renderAll(); }), h('span', { class: 'unit' }, 'mm')));
-  b.append(row('안전 여백', stepper(doc.safe, { min: 0, max: 20, step: 1 }, v => { mutate(() => { doc.safe = v; }); renderGuides(); }), h('span', { class: 'unit' }, 'mm')));
+  b.append(row('안전 여백', stepper(doc.safe, { min: 0, max: 20, step: 1 }, v => { mutate(() => { doc.safe = v; delete doc.safeSides; }); renderGuides(); renderBackdrop(); renderPaperBox(); }), h('span', { class: 'unit' }, 'mm')));
+  { // 면마다 따로: 위·아래·왼쪽·오른쪽 (정하지 않으면 위의 기본값을 그대로 써요)
+    const sf = NP.safeOf(doc), setSide = (k, v) => { mutate(() => { doc.safeSides = { ...(doc.safeSides || {}), [k]: v }; if (['t', 'r', 'b', 'l'].every(q => (doc.safeSides[q] >= 0 ? doc.safeSides[q] : doc.safe) === doc.safe)) delete doc.safeSides; }); renderGuides(); renderBackdrop(); renderPaperBox(); };
+    b.append(h('div', { class: 'sub2' }, '면마다 따로 (위·아래·왼쪽·오른쪽)'));
+    for (const [k, nm] of [['t', '위'], ['b', '아래'], ['l', '왼쪽'], ['r', '오른쪽']]) b.append(row(nm, stepper(sf[k], { min: 0, max: 20, step: 1 }, v => setSide(k, v)), h('span', { class: 'unit' }, 'mm')));
+    if (doc.safeSides) b.append(row('', btn('네 면 같게 되돌리기', () => { mutate(() => { delete doc.safeSides; }); renderGuides(); renderBackdrop(); renderPaperBox(); })));
+  }
   b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: ui.guides, onchange: e => { ui.guides = e.target.checked; renderGuides(); } }), '도련·안전선 보기 (인쇄되지 않아요)')));
   b.append(h('p', { class: 'hint' }, '위 크기는 최종 재단 크기예요(흰 쪽 = 자르는 자리). 도련은 그 바깥으로 따로 더해지는 빗금 띠(종이 밖, 재단 때 잘려 나가는 여유이며 배경·그림은 빨간 점선까지 채우기)이고, 파란 점선 = 안전선(중요한 글자는 안쪽에)이에요. 목록에 없는 크기(예: 슬림)는 mm로 적고 “이 크기 저장”을 누르세요.'));
 }
@@ -1436,7 +1449,17 @@ function renderGuideProps(b, ids) {
   b.append(h('div', { class: 'sub2' }, single ? `가이드선 (${gl[0].axis === 'x' ? '세로선' : '가로선'}) — ${fs[0].owner === 'master' ? '바탕: 이 바탕을 쓰는 모든 쪽' : '이 쪽만'}${gl[0].lock ? ' · 잠김' : ''}` : `가이드선 ${fs.length}개 선택`));
   if (single) b.append(h('div', { class: 'numgrid' }, ...numField('위치(mm)', gl[0].pos, v => { if (gl[0].lock) return toast('잠긴 가이드선이에요. 잠금을 풀어 주세요'); mutate(() => { gl[0].pos = r2(v); }); renderUserGuides(); renderPropBox(); })));
   b.append(row('색', guideColorBtns(gl[0].color || '#14b8d4', c => { mutate(() => { for (const g of gl) { if (c === '#14b8d4') delete g.color; else g.color = c; } }); renderUserGuides(); renderPropBox(); })));
-  const m = masterById(curPage().master), btns = [btn(locked ? '잠금 풀기' : '잠금', () => { mutate(() => { for (const g of gl) { if (locked) delete g.lock; else g.lock = true; } }); renderUserGuides(); renderPropBox(); renderGuideBox(); }), btn('지우기', removeSelGuide), btn('묶음으로 저장…', () => saveGuideSet(gl))];
+  const gset = new Set(gl.map(g => g.gid).filter(Boolean)), isGroup = gl.length > 1 && gl.every(g => g.gid) && gset.size === 1;
+  if (gl.length > 1) {
+    b.append(h('p', { class: 'hint' }, isGroup ? `한 묶음(${gl.length}개)이에요. 하나를 끌면 같은 방향의 선이 함께 움직여요.` : `${gl.length}개를 골랐어요. 아래 “묶기”를 누르면 하나로 움직여요.`));
+    for (const ax of ['x', 'y']) {
+      if (!gl.some(g => g.axis === ax && !g.lock)) continue;
+      const inp = h('input', { type: 'number', value: 0, step: 'any', style: 'width:72px' });
+      const go = () => { const dl = parseFloat(inp.value); if (!Number.isFinite(dl) || !dl) return; mutate(() => { for (const g of gl) if (g.axis === ax && !g.lock) g.pos = r2(g.pos + dl); }); renderUserGuides(); renderPropBox(); };
+      b.append(row(ax === 'x' ? '좌우로 옮기기' : '위아래로 옮기기', inp, h('span', { class: 'unit' }, ax === 'x' ? 'mm (+ 오른쪽 / − 왼쪽)' : 'mm (+ 아래 / − 위)'), btn('옮기기', go)));
+    }
+  }
+  const m = masterById(curPage().master), btns = [...(gl.length > 1 && !isGroup ? [btn('묶기', () => { const id = newUid('gg'); mutate(() => { for (const g of gl) g.gid = id; }); renderUserGuides(); renderPropBox(); })] : []), ...(gl.some(g => g.gid) ? [btn('묶음 풀기', () => { mutate(() => { for (const g of gl) delete g.gid; }); renderUserGuides(); renderPropBox(); })] : []), btn(locked ? '잠금 풀기' : '잠금', () => { mutate(() => { for (const g of gl) { if (locked) delete g.lock; else g.lock = true; } }); renderUserGuides(); renderPropBox(); renderGuideBox(); }), btn('지우기', removeSelGuide), btn('묶음으로 저장…', () => saveGuideSet(gl))];
   if (single && fs[0].owner === 'page' && m && !ui.editMaster) btns.push(btn('모든 쪽에 쓰기(바탕으로)', () => { const g = gl[0]; mutate(() => { const arr = curPage().guides; arr.splice(arr.indexOf(g), 1); m.guides.push(g); }); renderUserGuides(); renderPropBox(); }));
   if (single && fs[0].owner === 'master' && !ui.editMaster) btns.push(btn('이 쪽에서만 쓰기', () => { const g = gl[0]; mutate(() => { m.guides.splice(m.guides.indexOf(g), 1); curPage().guides.push(g); }); renderUserGuides(); renderPropBox(); }));
   b.append(h('div', { class: 'btnrow' }, btns));
@@ -1458,8 +1481,8 @@ function holeStrip() { // 링 구멍이 차지하는 가장자리(바인더용).
 }
 function autoDivide(axis, n) { // axis 'y' = 가로선(위아래로 나눔), 'x' = 세로선(좌우로 나눔)
   n = clamp(Math.round(n) || 2, 2, 24);
-  const sf = ui.divArea === 'safe' ? doc.safe : 0, len = axis === 'x' ? doc.page.w : doc.page.h, list = guideTarget();
-  let a = sf, bb = len - sf;
+  const sfo = ui.divArea === 'safe' ? NP.safeOf(doc) : { t: 0, r: 0, b: 0, l: 0 }, len = axis === 'x' ? doc.page.w : doc.page.h, list = guideTarget();
+  let a = axis === 'x' ? sfo.l : sfo.t, bb = len - (axis === 'x' ? sfo.r : sfo.b);
   const hs = axis === 'x' ? holeStrip() : null; // 좌우로 나눌 때는 링 구멍 부분을 빼고 나눠요
   if (hs) { if (hs.left) a = Math.max(a, hs.w); else bb = Math.min(bb, len - hs.w); }
   const mg = Math.max(0, +ui.divMargin || 0); a += mg; bb -= mg; // 내부 여백: 사방에서 안쪽으로 줄인 만큼만 나눠요
@@ -1478,9 +1501,10 @@ function loadGuideSet(set, replace) {
   const list = guideTarget();
   mutate(() => {
     if (replace) for (let i = list.length - 1; i >= 0; i--) if (!list[i].lock) list.splice(i, 1);
-    for (const g of set.guides) if (!list.some(x => x.axis === g.axis && Math.abs(x.pos - g.pos) < 0.05)) list.push({ id: newUid('g'), axis: g.axis, pos: g.pos, ...(g.color ? { color: g.color } : {}) });
+    const gid = set.guides.length > 1 ? newUid('gg') : null; // 불러온 묶음은 한 묶음으로 유지돼요
+    for (const g of set.guides) if (!list.some(x => x.axis === g.axis && Math.abs(x.pos - g.pos) < 0.05)) list.push({ id: newUid('g'), axis: g.axis, pos: g.pos, ...(g.color ? { color: g.color } : {}), ...(gid ? { gid } : {}) });
   });
-  renderUserGuides(); renderGuideBox(); toast(`“${set.name}” 묶음을 ${replace ? '바꿔 넣었어요' : '더했어요'}`);
+  renderUserGuides(); renderGuideBox(); toast(`“${set.name}” 묶음을 ${replace ? '바꿔 넣었어요' : '더했어요'} (한 묶음으로 들어왔어요 — 끌거나 숫자로 옮길 수 있어요)`);
 }
 function renderGuideBox() {
   const b = $('#guideBox'); if (!b) return; b.textContent = '';
@@ -1500,7 +1524,7 @@ function renderGuideBox() {
   b.append(h('div', { class: 'btnrow' }, btn(`여기(${ui.editMaster ? '바탕' : (m && ui.guideScope === 'master' ? '바탕' : '이 쪽')})의 가이드선 전부 잠금`, () => { mutate(() => { for (const g of tg) g.lock = true; }); renderUserGuides(); renderGuideBox(); }, { disabled: !tg.length }),
     btn('전부 잠금 풀기', () => { mutate(() => { for (const g of tg) delete g.lock; }); renderUserGuides(); renderGuideBox(); }, { disabled: !tg.some(g => g.lock) }),
     btn('잠기지 않은 것 모두 지우기', () => { mutate(() => { for (let i = tg.length - 1; i >= 0; i--) if (!tg[i].lock) tg.splice(i, 1); }); selGuide = null; extraGuides = []; renderUserGuides(); renderGuideBox(); renderPropBox(); }, { disabled: !tg.some(g => !g.lock) })));
-  b.append(h('div', { class: 'sub2' }, '가이드 묶음 (저장해 두고 다른 쪽에서 불러오기)'));
+  b.append(h('div', { class: 'sub2' }, '가이드 묶음 (저장해 두고 다른 쪽에서 불러오기 · 불러오면 한 묶음으로 들어와요)'));
   b.append(h('div', { class: 'btnrow' }, btn('여기의 가이드선 전부를 묶음으로 저장…', () => saveGuideSet(tg), { disabled: !tg.length }), btn('고른 가이드선만 묶음으로 저장…', () => saveGuideSet(guideSel().map(findGuide).filter(Boolean).map(f => f.g)), { disabled: !guideSel().length })));
   if (!doc.guideSets.length) b.append(h('p', { class: 'hint' }, '저장한 묶음이 아직 없어요. 가로·세로 가이드선을 만든 뒤 위 단추로 저장하면, 다른 쪽에서 불러올 수 있어요.'));
   for (const set of doc.guideSets) {
@@ -2099,7 +2123,7 @@ $('#doPdf').onclick = async () => {
       ...(i.lowRes && i.lowRes.length ? [h('p', { class: 'info warn' }, '⚠ 사진이 흐릿하게 인쇄될 수 있어요 (인쇄 크기 기준 해상도)'), h('ul', { class: 'sum' }, i.lowRes.map(x => h('li', {}, `${x.page}쪽: 약 ${x.dpi}dpi (300 이상 권장)`)))] : []),
       ...(i.transparentPages && i.transparentPages.length ? [h('p', { class: 'info' }, `ℹ 투명한 PNG가 ${i.transparentPages.join(', ')}쪽에 있어요 — 투명하게 들어갔어요. 인쇄소가 투명 부분을 합치는(평탄화) 과정에서 달라질 수 있으니 시안을 확인해 보세요.`)] : []),
       ...(i.missingImages && i.missingImages.length ? [h('p', { class: 'info warn' }, `⚠ 찾을 수 없는 사진이 있어 빠졌어요: ${i.missingImages.join(', ')}`)] : []),
-      ...(i.safePages.length ? [h('p', { class: 'info warn' }, `⚠ 안전선(${doc.safe}mm) 밖으로 나온 글자가 있는 쪽: ${i.safePages.join(', ')}쪽 — 잘릴 수 있어요`)] : []));
+      ...(i.safePages.length ? [h('p', { class: 'info warn' }, `⚠ 안전선(${(s => s.t === s.r && s.r === s.b && s.b === s.l ? s.t + 'mm' : `위 ${s.t}·오른쪽 ${s.r}·아래 ${s.b}·왼쪽 ${s.l}mm`)(NP.safeOf(doc))}) 밖으로 나온 글자가 있는 쪽: ${i.safePages.join(', ')}쪽 — 잘릴 수 있어요`)] : []));
   } catch (err) {
     out.textContent = '';
     out.append(h('p', { class: 'info warn' }, `만들지 못했어요: ${err.message || err}`));
