@@ -185,7 +185,7 @@ function normalize(s) {
   return o;
 }
 let doc = normalize(lsGet(LS.cur, null) || lsGet(LS.cur1, null));
-const ui = { tab: 'doc', tabManual: false, pageIdx: 0, editMaster: false, masterId: null, guides: true, rulers: true, userGuides: true, smart: true, guideScope: 'page', alignTo: 'sel', draw: false, guideColor: '#14b8d4', divArea: 'page' };
+const ui = { tab: 'doc', tabManual: false, pageIdx: 0, editMaster: false, masterId: null, guides: true, rulers: true, userGuides: true, smart: true, guideScope: 'page', alignTo: 'sel', draw: false, guideColor: '#14b8d4', divArea: 'page', divMargin: 0 };
 let selIds = [], selGuide = null, extraGuides = [], editingId = null, editingCell = null, cellSel = null, editBefore = null, zoom = 1;
 let clip = null, fmt = null, pasteN = 0;
 const els = new Map();
@@ -1451,12 +1451,22 @@ function renderPropBox() {
   renderObjList(b);
 }
 /* ---- 가이드선 도구: 자동 나누기 · 묶음 저장/불러오기 ---- */
+function holeStrip() { // 링 구멍이 차지하는 가장자리(바인더용). 홀수 쪽=왼쪽, 짝수 쪽=오른쪽 (구멍 가이드를 그리는 규칙과 같음)
+  if (!(doc.holes.on && doc.kind !== 'bound')) return null;
+  const left = ui.editMaster || ui.pageIdx % 2 === 0;
+  return { left, w: r2(doc.holes.edge + doc.holes.dia / 2) };
+}
 function autoDivide(axis, n) { // axis 'y' = 가로선(위아래로 나눔), 'x' = 세로선(좌우로 나눔)
   n = clamp(Math.round(n) || 2, 2, 24);
-  const sf = ui.divArea === 'safe' ? doc.safe : 0, len = axis === 'x' ? doc.page.w : doc.page.h, a = sf, bb = len - sf, list = guideTarget();
+  const sf = ui.divArea === 'safe' ? doc.safe : 0, len = axis === 'x' ? doc.page.w : doc.page.h, list = guideTarget();
+  let a = sf, bb = len - sf;
+  const hs = axis === 'x' ? holeStrip() : null; // 좌우로 나눌 때는 링 구멍 부분을 빼고 나눠요
+  if (hs) { if (hs.left) a = Math.max(a, hs.w); else bb = Math.min(bb, len - hs.w); }
+  const mg = Math.max(0, +ui.divMargin || 0); a += mg; bb -= mg; // 내부 여백: 사방에서 안쪽으로 줄인 만큼만 나눠요
+  if (bb - a < 1) return toast('여백이 너무 커서 나눌 자리가 없어요');
   let made = 0;
   mutate(() => { for (let i = 1; i < n; i++) { const pos = r2(a + (bb - a) * i / n); if (list.some(g => g.axis === axis && Math.abs(g.pos - pos) < 0.05)) continue; list.push({ id: newUid('g'), axis, pos, ...(ui.guideColor !== '#14b8d4' ? { color: ui.guideColor } : {}) }); made++; } });
-  renderUserGuides(); renderGuideBox(); toast(made ? `${axis === 'x' ? '세로' : '가로'}선 ${made}개를 만들었어요 (${n}등분)` : '이미 같은 자리에 가이드선이 있어요');
+  renderUserGuides(); renderGuideBox(); toast(made ? `${axis === 'x' ? '세로' : '가로'}선 ${made}개를 만들었어요 (${n}등분${mg ? ` · 여백 ${mg}mm 제외` : ''}${hs ? ` · 링 구멍 ${hs.left ? '왼쪽' : '오른쪽'} ${hs.w}mm 제외` : ''})` : '이미 같은 자리에 가이드선이 있어요');
 }
 function saveGuideSet(list) {
   if (!list.length) return toast('저장할 가이드선이 없어요');
@@ -1479,6 +1489,10 @@ function renderGuideBox() {
   b.append(row('새 가이드 색', guideColorBtns(ui.guideColor, c => { ui.guideColor = c; renderGuideBox(); })));
   b.append(h('div', { class: 'sub2' }, '자동으로 나누기'));
   b.append(row('기준', seg([['page', '노트 전체'], ['safe', '안전선 안쪽']], ui.divArea, v => { ui.divArea = v; renderGuideBox(); })));
+  b.append(row('내부 여백', stepper(ui.divMargin, { min: 0, max: 40, step: 1 }, v => { ui.divMargin = v; }), h('span', { class: 'unit' }, 'mm')));
+  b.append(h('p', { class: 'hint' }, '여백을 주면 사방에서 그만큼 안쪽을 뺀 자리를 나눠요. 0이면 노트 전체(바인더용은 링 구멍 부분만 뺀 자리)를 나눠요.'));
+  const hs = holeStrip();
+  if (hs) b.append(h('p', { class: 'hint' }, `바인더용이라 “좌우로” 나눌 때는 링 구멍 부분(${hs.left ? '왼쪽' : '오른쪽'} ${hs.w}mm)을 빼고 나눠요. 구멍은 홀수 쪽=왼쪽, 짝수 쪽=오른쪽이라, 지금 보는 쪽 기준이에요. “모든 쪽(바탕)”에 만들면 짝수 쪽은 반대편 기준으로 따로 만들어 주세요.`));
   const nIn = (axis) => { const inp = h('input', { type: 'number', min: 2, max: 24, value: 5, style: 'width:56px' }); return [inp, btn('나누기', () => autoDivide(axis, +inp.value))]; };
   b.append(row('위아래로 (가로선)', [2, 3, 4].map(n => btn(`${n}등분`, () => autoDivide('y', n))), ...nIn('y')));
   b.append(row('좌우로 (세로선)', [2, 3, 4].map(n => btn(`${n}등분`, () => autoDivide('x', n))), ...nIn('x')));
