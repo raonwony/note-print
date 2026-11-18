@@ -128,7 +128,7 @@
     const dashOpts = (dash, th) => dash ? { dashArray: NP.dashOf(th).map(v => v * K), dashPhase: 0 } : {};
     async function drawItem(page, it, gs, pageNo) {
       if (it.hide) return;
-      const color = colorOf(it.color);
+      const color = colorOf(it.color, it.type !== 'text' && it.tone ? it.tone / 100 : 1); // 선 농도
       const dd = (dash, th) => (dash ? { dashArray: NP.dashOf(th).map(v => v * K), dashPhase: 0 } : {});
       if (it.type === 'line') { // 두 끝점을 잇는 선 (+ 화살표 머리)
         const ag = NP.arrowGeom(it);

@@ -10,11 +10,11 @@ const PRESETS = [
   { id: 'a4', name: 'A4', w: 210, h: 297 }, { id: 'a5', name: 'A5', w: 148, h: 210 },
   { id: 'a6', name: 'A6', w: 105, h: 148 }, { id: 'a6s', name: 'A6 슬림', w: 85, h: 148 }, { id: 'a7', name: 'A7', w: 74, h: 105 },
   { id: 'b5', name: 'B5', w: 176, h: 250 }, { id: 'b6', name: 'B6', w: 128, h: 182 }, { id: 'b6s', name: 'B6 슬림', w: 106, h: 182 }, { id: 'b7', name: 'B7', w: 91, h: 128 },
-  { id: 'bible', name: '바이블 (6공)', w: 95, h: 171 }, { id: 'm5', name: 'M5 마이크로5 (5공)', w: 62, h: 105 },
+  { id: 'bible', name: '바이블 (6공)', w: 95, h: 171 }, { id: 'm5', name: 'M5 마이크로5 (5공)', w: 68, h: 105 },
 ];
 // 새 파일 만들 때 보여주는 크기 (슬림은 임시값 — 나중에 실물에 맞춰 고치기)
 const SIZE_SETS = {
-  binder: [{ k: 'bible', n: '바이블 (6공)', w: 95, h: 171, hole: 'bible' }, { k: 'a5', n: 'A5 (6공)', w: 148, h: 210, hole: 'a5' }, { k: 'a6', n: 'A6 (6공)', w: 105, h: 148, hole: 'a6' }, { k: 'm5', n: 'M5 마이크로5 (5공)', w: 62, h: 105, hole: 'm5' }],
+  binder: [{ k: 'bible', n: '바이블 (6공)', w: 95, h: 171, hole: 'bible' }, { k: 'a5', n: 'A5 (6공)', w: 148, h: 210, hole: 'a5' }, { k: 'a6', n: 'A6 (6공)', w: 105, h: 148, hole: 'a6' }, { k: 'm5', n: 'M5 마이크로5 (5공)', w: 68, h: 105, hole: 'm5' }],
   bound: [{ k: 'a6', n: 'A6', w: 105, h: 148 }, { k: 'a6s', n: 'A6 슬림', w: 85, h: 148 }, { k: 'b6', n: 'B6', w: 128, h: 182 }, { k: 'b6s', n: 'B6 슬림', w: 106, h: 182 }, { k: 'a5', n: 'A5', w: 148, h: 210 }, { k: 'a7', n: 'A7', w: 74, h: 105 }, { k: 'b7', n: 'B7', w: 91, h: 128 }],
 };
 // 링 구멍: 구멍 사이 간격(mm). 가장자리 거리는 자료가 없어 추정값(실물 확인 후 수정)
@@ -100,7 +100,7 @@ function normalize(s) {
   const mc = v => (o.colors.some(c => c.id === v) ? v : HEX_MAP[String(v).toLowerCase()] || 'k100');
   { // 쪽 번호·링 구멍 설정
     const pn = src.pageNum || {}, hl = src.holes || {};
-    o.pageNum = { on: !!pn.on, h: pn.h === 'center' ? 'center' : 'outer', v: pn.v === 'top' ? 'top' : 'bottom', start: clamp(Math.round(+pn.start) || 1, -99, 9999), pt: clamp(+pn.pt || 8, 4, 40), font: FONTS[pn.font] ? pn.font : 'pretendard', color: mc(pn.color || 'k100') };
+    o.pageNum = { on: !!pn.on, h: pn.h === 'center' ? 'center' : 'outer', v: pn.v === 'top' ? 'top' : 'bottom', start: clamp(Math.round(+pn.start) || 1, -99, 9999), pt: clamp(+pn.pt || 8, 2, 40), font: FONTS[pn.font] ? pn.font : 'pretendard', color: mc(pn.color || 'k100') };
     const gaps = Array.isArray(hl.gaps) && hl.gaps.length ? hl.gaps.map(v => clamp(+v || 19, 3, 120)).slice(0, 11) : [19, 19, 38, 19, 19];
     o.holes = { on: !!hl.on, preset: typeof hl.preset === 'string' ? hl.preset : 'custom', gaps, dia: clamp(+hl.dia || 5, 3, 6), edge: clamp(+hl.edge || 6, 1.5, 25), est: hl.est !== false };
   }
@@ -123,13 +123,13 @@ function normalize(s) {
       if (!['text', 'line', 'shape', 'path', 'table', 'image'].includes(it.type)) continue;
       let id = Number.isInteger(it.id) && !used.has(it.id) ? it.id : next++;
       used.add(id);
-      const b = { type: it.type, id, color: mc(it.color), rot: normDeg(+it.rot || 0), lock: !!it.lock, hide: !!it.hide, gid: typeof it.gid === 'string' ? it.gid : null, ar: !!it.ar };
+      const b = { type: it.type, id, color: mc(it.color), rot: normDeg(+it.rot || 0), lock: !!it.lock, hide: !!it.hide, gid: typeof it.gid === 'string' ? it.gid : null, ar: !!it.ar, ...(['line', 'shape', 'path', 'table'].includes(it.type) && +it.tone > 0 && +it.tone < 100 ? { tone: clamp(+it.tone, 5, 100) } : {}) };
       if (it.type === 'text') {
         const font = FONTS[it.font] ? it.font : 'pretendard';
         Object.assign(b, { x: +it.x || 0, y: +it.y || 0, w: +it.w || 30, pt: +it.pt || 12, text: String(it.text ?? ''), bold: !!it.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right', 'justify', 'distribute'].includes(it.align) ? it.align : 'left', font, lh: +it.lh || 0 });
         { // 글자 일부만 다른 크기·색 (spans)
           const nc = [...b.text].length;
-          const sp = (Array.isArray(it.spans) ? it.spans : []).map(q => q && ({ a: clamp(Math.round(+q.a) || 0, 0, nc), b: clamp(Math.round(+q.b) || 0, 0, nc), pt: +q.pt > 0 ? clamp(+q.pt, 4, 200) : 0, color: q.color ? mc(q.color) : '' })).filter(q => q && q.b > q.a && (q.pt || q.color)).slice(0, 400).map(q => ({ a: q.a, b: q.b, ...(q.pt ? { pt: q.pt } : {}), ...(q.color ? { color: q.color } : {}) }));
+          const sp = (Array.isArray(it.spans) ? it.spans : []).map(q => q && ({ a: clamp(Math.round(+q.a) || 0, 0, nc), b: clamp(Math.round(+q.b) || 0, 0, nc), pt: +q.pt > 0 ? clamp(+q.pt, 2, 200) : 0, color: q.color ? mc(q.color) : '' })).filter(q => q && q.b > q.a && (q.pt || q.color)).slice(0, 400).map(q => ({ a: q.a, b: q.b, ...(q.pt ? { pt: q.pt } : {}), ...(q.color ? { color: q.color } : {}) }));
           if (sp.length) b.spans = sp;
         }
       } else if (it.type === 'line') {
@@ -157,7 +157,7 @@ function normalize(s) {
         for (const [k, v] of Object.entries(it.cells && typeof it.cells === 'object' ? it.cells : {})) {
           if (!/^\d+,\d+$/.test(k) || !v) continue;
           const font = FONTS[v.font] ? v.font : 'pretendard';
-          cells[k] = { font, pt: clamp(+v.pt || 9, 4, 80), bold: !!v.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right'].includes(v.align) ? v.align : 'left', valign: ['top', 'middle', 'bottom'].includes(v.valign) ? v.valign : 'top', color: mc(v.color), text: String(v.text ?? ''), fill: fillOf(v.fill) };
+          cells[k] = { font, pt: clamp(+v.pt || 9, 2, 80), bold: !!v.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right'].includes(v.align) ? v.align : 'left', valign: ['top', 'middle', 'bottom'].includes(v.valign) ? v.valign : 'top', color: mc(v.color), text: String(v.text ?? ''), fill: fillOf(v.fill) };
         }
         const merges = (Array.isArray(it.merges) ? it.merges : []).filter(m => m && [m.r, m.c, m.rs, m.cs].every(Number.isInteger) && m.rs * m.cs > 1).map(m => ({ r: m.r, c: m.c, rs: m.rs, cs: m.cs }));
         Object.assign(b, { x: +it.x || 0, y: +it.y || 0, cw, rh, w: sum(cw), h: sum(rh), cells, merges, th: +it.th || 0.3, dash: !!it.dash, outer: it.outer !== false });
@@ -361,7 +361,7 @@ let svgUid = 0;
 function fillShape(svg, it, W, Hh, M = 0) {
   svg.setAttribute('viewBox', `${-M} ${-M} ${W + 2 * M} ${Hh + 2 * M}`);
   svg.textContent = '';
-  const stroke = colorRGB(it.color);
+  const stroke = colorRGB(it.color, (it.tone || 100) / 100); // 선 농도
   const dashOn = e => { if (it.dash) { const [d, g] = NP.dashOf(it.th); e.setAttribute('stroke-dasharray', `${d} ${g}`); } };
   const add = (tag, attrs, extra) => { const e = svgEl(tag, attrs); if (extra) extra(e); svg.append(e); return e; };
   if (it.type === 'line') {
@@ -492,7 +492,7 @@ function syncItemEl(el, it, pageNo, gs) {
   s.left = U(bx.x - M); s.top = U(bx.y - M); s.width = U(Math.max(bx.w, 0.01) + 2 * M); s.height = U(Math.max(bx.h, 0.01) + 2 * M);
   s.transform = it.type !== 'line' && it.rot ? `rotate(${it.rot}deg)` : '';
   const sig = it.type === 'line'
-    ? JSON.stringify([it.x2 - it.x1, it.y2 - it.y1, it.th, it.dash, it.color, it.ah, it.at, doc.colors])
+    ? JSON.stringify([it.x2 - it.x1, it.y2 - it.y1, it.th, it.dash, it.color, it.tone, it.ah, it.at, doc.colors])
     : JSON.stringify({ ...it, x: 0, y: 0, rot: 0, lock: 0, hide: 0, gid: 0, id: 0, _c: doc.colors, _p: it.type === 'table' ? pageNo : 0 });
   if (el._sig !== sig && !el.classList.contains('editing')) {
     el._sig = sig;
@@ -1093,7 +1093,7 @@ function finishDraw(d, cancel) {
   const closed = looped && pts.length >= 4;
   if (closed) pts = pts.slice(0, -1);
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(Math.max(...xs) - x0, 0.5), hh = Math.max(Math.max(...ys) - y0, 0.5);
-  const it = { type: 'path', rot: 0, lock: false, hide: false, gid: null, color: 'k100', x: r2(x0), y: r2(y0), w: r2(w), h: r2(hh), pts: pts.map(p => [(p[0] - x0) / w, (p[1] - y0) / hh]), closed, th: 0.4, dash: false, stroke: true, fill: null, pat: null };
+  const it = { type: 'path', rot: 0, lock: false, hide: false, gid: null, color: 'k100', x: r2(x0), y: r2(y0), w: r2(w), h: r2(hh), pts: pts.map(p => [(p[0] - x0) / w, (p[1] - y0) / hh]), closed, th: 0.2, dash: false, stroke: true, fill: null, pat: null };
   mutate(() => { it.id = nextItemId(); ctxItems().push(it); });
   renderItems(); select([it.id]);
 }
@@ -1139,6 +1139,7 @@ scroller.addEventListener('gesturestart', e => { e.preventDefault(); gz0 = zoom;
 scroller.addEventListener('gesturechange', e => { e.preventDefault(); const r = scroller.getBoundingClientRect(); zoomAt(gz0 * e.scale, r.left + r.width / 2, r.top + r.height / 2); });
 $('#zoomIn').onclick = () => { const r = scroller.getBoundingClientRect(); zoomAt(zoom * 1.25, r.left + r.width / 2, r.top + r.height / 2); };
 $('#zoomOut').onclick = () => { const r = scroller.getBoundingClientRect(); zoomAt(zoom / 1.25, r.left + r.width / 2, r.top + r.height / 2); };
+$('#zoom100').onclick = () => { zoom = (96 / 25.4) / fitPPM(); applyView(); drawRulers(); toast('실제 크기에 가깝게 보여요 (화면마다 조금 다를 수 있어요)'); }; // 1mm = 96/25.4 px
 $('#zoomFit').onclick = () => { zoom = 1; applyView(); scroller.scrollLeft = 0; scroller.scrollTop = 0; drawRulers(); };
 
 /* ---------- 글자 고쳐 쓰기 ---------- */
@@ -1313,10 +1314,10 @@ function addItem(kind) {
   const bx = snapPos(w * 0.12, 'x') + n * st, by = snapPos(ph * 0.12, 'y') + n * st;
   const gm = ctxMaster();
   const base = { rot: 0, lock: false, hide: false, gid: null, color: 'k100' };
-  const shape = (k, ww, hh, extra = {}) => ({ ...base, type: 'shape', kind: k, x: bx, y: by, w: snapLen(ww), h: snapLen(hh), r: 0, pts: 5, th: 0.3, dash: false, stroke: true, fill: null, pat: null, ...extra });
+  const shape = (k, ww, hh, extra = {}) => ({ ...base, type: 'shape', kind: k, x: bx, y: by, w: snapLen(ww), h: snapLen(hh), r: 0, pts: 5, th: 0.15, dash: false, stroke: true, fill: null, pat: null, ...extra });
   let it;
   if (kind === 'text') it = { ...base, type: 'text', x: bx, y: by, w: snapLen(w * 0.6), text: '여기에 글자', pt: w < 120 ? 10 : 12, bold: false, align: 'left', font: 'pretendard', lh: gm && gm.grid.type !== 'none' ? 1 : 0 };
-  else if (kind === 'line') it = { ...base, type: 'line', x1: snapPos(w * 0.1, 'x'), y1: by + st * 2, x2: snapPos(w * 0.9, 'x'), y2: by + st * 2, th: 0.3, dash: false, ah: 'none', at: 'none' };
+  else if (kind === 'line') it = { ...base, type: 'line', x1: snapPos(w * 0.1, 'x'), y1: by + st * 2, x2: snapPos(w * 0.9, 'x'), y2: by + st * 2, th: 0.15, dash: false, ah: 'none', at: 'none' };
   else if (kind === 'rect') it = shape('rect', w * 0.6, ph * 0.2);
   else if (kind === 'round') it = shape('rect', w * 0.6, ph * 0.2, { r: 4 });
   else if (kind === 'ellipse') it = shape('ellipse', w * 0.45, ph * 0.2);
@@ -1324,7 +1325,7 @@ function addItem(kind) {
   else if (kind === 'star') it = shape('star', w * 0.3, w * 0.3);
   else if (kind === 'table') {
     const cols = 3, rows = 4, cwv = Math.max(st, snapLen(w * 0.8 / cols)), rhv = Math.max(st, snapLen(8));
-    it = { ...base, type: 'table', x: bx, y: by, cw: Array(cols).fill(cwv), rh: Array(rows).fill(rhv), w: cwv * cols, h: rhv * rows, cells: {}, merges: [], th: 0.3, dash: false, outer: true };
+    it = { ...base, type: 'table', x: bx, y: by, cw: Array(cols).fill(cwv), rh: Array(rows).fill(rhv), w: cwv * cols, h: rhv * rows, cells: {}, merges: [], th: 0.15, dash: false, outer: true };
   } else return;
   mutate(() => { it.id = nextItemId(); ctxItems().push(it); });
   renderItems(); select([it.id]);
@@ -1427,8 +1428,8 @@ function distSel(axis) {
   refreshItems(selIds); renderPropBox();
 }
 const STYLE_KEYS = {
-  text: ['font', 'pt', 'bold', 'align', 'lh', 'color'], line: ['th', 'dash', 'color', 'ah', 'at'],
-  image: ['gray'], shape: ['th', 'dash', 'color', 'stroke', 'fill', 'pat', 'r'], path: ['th', 'dash', 'color', 'stroke', 'fill', 'pat'], table: ['th', 'dash', 'color', 'outer'],
+  text: ['font', 'pt', 'bold', 'align', 'lh', 'color'], line: ['th', 'dash', 'color', 'tone', 'ah', 'at'],
+  image: ['gray'], shape: ['th', 'dash', 'color', 'tone', 'stroke', 'fill', 'pat', 'r'], path: ['th', 'dash', 'color', 'tone', 'stroke', 'fill', 'pat'], table: ['th', 'dash', 'color', 'tone', 'outer'],
 };
 function copyFormat() { const it = selItems()[0]; if (!it) return; fmt = { type: it.type, props: JSON.parse(JSON.stringify(Object.fromEntries(STYLE_KEYS[it.type].map(k => [k, it[k]])))) }; toast('서식을 복사했어요. 다른 것을 골라 “서식 붙여넣기”를 누르세요'); renderPropBox(); }
 function pasteFormat() {
@@ -1840,8 +1841,15 @@ function renderItemProps(b, items) {
 
   // 종류별 설정 (같은 종류만 골랐을 때)
   if (!same) { b.append(h('p', { class: 'hint' }, '종류가 다른 것을 함께 골랐어요. 색·선 굵기는 “서식 복사”로 맞출 수 있어요.')); return; }
-  const thick = [0.1, 0.2, 0.3, 0.5, 0.8, 1.2, 2];
-  const thickSel = () => h('select', { onchange: e => upd(it => { it.th = +e.target.value; }) }, thick.map(t => h('option', { value: t, selected: Math.abs(primary.th - t) < 0.001 }, t + ' mm')));
+  const thick = [0.05, 0.08, 0.1, 0.15, 0.2, 0.25, 0.3, 0.5, 0.8, 1.2, 2];
+  const thickSel = () => { // 목록에서 고르거나 숫자를 직접 적기
+    const setTh = v => { v = Math.round(clamp(+v || 0.15, 0.03, 10) * 1000) / 1000; upd(it => { it.th = v; }); };
+    const inList = thick.some(t => Math.abs(primary.th - t) < 0.001);
+    return h('span', { class: 'thk' },
+      h('select', { onchange: e => setTh(e.target.value) }, [...(inList ? [] : [h('option', { value: primary.th, selected: true }, primary.th + ' mm')]), ...thick.map(t => h('option', { value: t, selected: Math.abs(primary.th - t) < 0.001 }, t + ' mm'))]),
+      h('input', { type: 'number', step: 'any', min: 0.03, max: 10, value: primary.th, style: 'width:66px', title: '직접 적기(mm)', onchange: e => setTh(e.target.value) }), h('span', { class: 'unit' }, 'mm'));
+  };
+  const lineTone = () => row('선 농도', stepper(primary.tone || 100, { min: 5, max: 100, step: 5 }, v => upd(it => { if (v >= 100) delete it.tone; else it.tone = v; }, 'ltone')), h('span', { class: 'unit' }, '% (100 = 그 색 그대로)'));
   const dashSeg = () => seg([[0, '실선'], [1, '점선']], primary.dash ? 1 : 0, v => upd(it => { it.dash = !!v; }));
   const color = (label = '색') => row(label, swatches(primary.color, c => upd(it => { it.color = c; if (it.type === 'text') dropSpanKey(it, 'color'); })));
   const toneRow = (cur, onTone) => row('농도', stepper(cur, { min: 5, max: 100, step: 5 }, onTone), h('span', { class: 'unit' }, '%'));
@@ -1849,8 +1857,9 @@ function renderItemProps(b, items) {
   if (primary.type === 'text') {
     const f = FONTS[primary.font] || FONTS.pretendard;
     b.append(row('글꼴', h('select', { onchange: e => upd(it => { it.font = e.target.value; if (!FONTS[it.font].files[700]) it.bold = false; }) }, Object.entries(FONTS).map(([k, v]) => h('option', { value: k, selected: primary.font === k }, v.label)))));
-    b.append(row('글자 크기', stepper(primary.pt, { min: 4, max: 80, step: 1 }, v => upd(it => { it.pt = v; dropSpanKey(it, 'pt'); }, 'pt')), h('span', { class: 'unit' }, 'pt')));
+    b.append(row('글자 크기', stepper(primary.pt, { min: 2, max: 80, step: 1 }, v => upd(it => { it.pt = v; dropSpanKey(it, 'pt'); }, 'pt')), h('span', { class: 'unit' }, 'pt')));
     b.append(row('모양', f.files[700] ? btn('굵게', () => upd(it => { it.bold = !primary.bold; }), { class: primary.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '이 글꼴은 굵게가 없어요')));
+    if (primary.pt < 5) b.append(h('p', { class: 'hint warnhint' }, '5pt보다 작은 글자는 집 프린터에서 뭉개질 수 있어요(인쇄소 PDF는 더 선명해요).'));
     b.append(row('정렬', seg([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽'], ['justify', '양쪽'], ['distribute', '균등']], primary.align, v => upd(it => { it.align = v; }))));
     if (primary.align === 'justify' || primary.align === 'distribute') b.append(h('p', { class: 'hint' }, primary.align === 'justify' ? '양쪽: 여러 줄 글에서 줄의 양 끝을 상자 폭에 맞춰요(문단의 마지막 줄만 왼쪽).' : '균등: 짧은 한 줄도 글자 사이를 벌려 상자 폭에 꽉 채워요(줄마다).'));
     b.append(row('줄 간격', h('select', { onchange: e => upd(it => { it.lh = parseFloat(e.target.value); }) }, [[0, '자동'], [1, '모눈 1칸'], [1.5, '모눈 1.5칸'], [2, '모눈 2칸']].map(([v, l]) => h('option', { value: v, selected: primary.lh === v }, l)))));
@@ -1858,7 +1867,7 @@ function renderItemProps(b, items) {
     if (items.length === 1 && editingId === primary.id && editingCell == null) { // 고치는 중: 고른 글자만 크기·색 바꾸기
       const ss = selStyle() || { pt: primary.pt, color: primary.color, n: 0 };
       b.append(h('div', { class: 'sub2' }, ss.n ? `선택한 글자 ${ss.n}자만 바꾸기` : '일부 글자만 바꾸기 — 먼저 글자를 끌어서 고르세요'));
-      b.append(row('크기', stepper(ss.pt, { min: 4, max: 200, step: 1 }, v => applyPartial({ pt: v })), h('span', { class: 'unit' }, 'pt')));
+      b.append(row('크기', stepper(ss.pt, { min: 2, max: 200, step: 1 }, v => applyPartial({ pt: v })), h('span', { class: 'unit' }, 'pt')));
       b.append(row('색', swatches(ss.color, c => applyPartial({ color: c }))));
       b.append(row('', btn('선택 글자를 기본 서식으로', () => applyPartial({ pt: null, color: null }))));
     }
@@ -1867,7 +1876,7 @@ function renderItemProps(b, items) {
     b.append(h('p', { class: 'hint' }, '글 속에 {쪽} 이라고 쓰면 쪽 번호로, {전체} 는 전체 쪽 수로 바뀌어요. (바탕에 넣으면 모든 쪽에 번호가 자동으로 찍혀요)'));
     if (f.limited) b.append(h('p', { class: 'hint' }, '개구 글꼴은 흔한 글자 위주라 드문 글자는 빠질 수 있어요. 내보낼 때 빠진 글자를 알려드려요.'));
   } else if (primary.type === 'line') {
-    b.append(row('굵기', thickSel())); b.append(row('모양', dashSeg())); b.append(color());
+    b.append(row('굵기', thickSel())); b.append(lineTone()); b.append(row('모양', dashSeg())); b.append(color());
     b.append(row('끝에 화살표', seg([['none', '없음'], ['arrow', '화살표']], primary.ah, v => upd(it => { it.ah = v; }))));
     b.append(row('시작에 화살표', seg([['none', '없음'], ['arrow', '화살표']], primary.at, v => upd(it => { it.at = v; }))));
   } else if (primary.type === 'shape' || primary.type === 'path') {
@@ -1879,7 +1888,7 @@ function renderItemProps(b, items) {
     }
     if (primary.type === 'shape' && primary.kind === 'star') b.append(row('꼭짓점 수', stepper(primary.pts, { min: 3, max: 12, step: 1 }, v => upd(it => { it.pts = Math.round(v); }, 'pts'))));
     b.append(row('테두리', seg([[1, '있음'], [0, '없음']], primary.stroke !== false ? 1 : 0, v => upd(it => { it.stroke = !!v; }))));
-    if (primary.stroke !== false) { b.append(color('테두리 색')); b.append(row('굵기', thickSel())); b.append(row('모양', dashSeg())); }
+    if (primary.stroke !== false) { b.append(color('테두리 색')); b.append(row('굵기', thickSel())); b.append(lineTone()); b.append(row('모양', dashSeg())); }
     if (closed) {
       b.append(row('채우기', seg([[0, '없음'], [1, '색']], primary.fill ? 1 : 0, v => upd(it => { it.fill = v ? { color: 'k20', tone: 100 } : null; }))));
       if (primary.fill) { b.append(row('채울 색', swatches(primary.fill.color, c => upd(it => { it.fill = { ...it.fill, color: c }; })))); b.append(toneRow(primary.fill.tone, v => upd(it => { it.fill = { ...it.fill, tone: v }; }, 'tone'))); }
@@ -1906,7 +1915,7 @@ function renderItemProps(b, items) {
     if (it.name) b.append(h('p', { class: 'hint' }, `파일: ${it.name} (${it.nw}×${it.nh}px)`));
   } else if (primary.type === 'table') {
     const it = primary, g = NP.tableGeom(it), rg = cellSel && cellSel.id === it.id ? expandRange(it, cellSel) : null, single = items.length === 1;
-    if (!single) { b.append(h('p', { class: 'hint' }, '표는 하나씩 골라야 칸을 고칠 수 있어요.')); b.append(row('선 굵기', thickSel())); b.append(row('선 모양', dashSeg())); b.append(color('선 색')); return; }
+    if (!single) { b.append(h('p', { class: 'hint' }, '표는 하나씩 골라야 칸을 고칠 수 있어요.')); b.append(row('선 굵기', thickSel())); b.append(lineTone()); b.append(row('선 모양', dashSeg())); b.append(color('선 색')); return; }
     const op = fn => { if (it.lock) return toast('잠긴 개체는 바꿀 수 없어요. 잠금을 풀어 주세요'); mutate(fn); cellSel = null; refreshItems([it.id]); renderPropBox(); };
     b.append(h('p', { class: 'hint' }, '표를 고른 뒤 칸을 누르면 칸이 선택되고(끌면 여러 칸), 한 번 더 누르거나 두 번 누르면 글자를 쓸 수 있어요. 표를 옮길 때는 왼쪽 위의 ✥ 손잡이를 끄세요. 칸 사이 선을 끌면 너비·높이가 바뀌어요.'));
     b.append(row('행 × 열', stepper(g.R, { min: 1, max: 80, step: 1 }, v => setTableDims(it, v, g.C)), h('span', { class: 'unit' }, '행 ×'), stepper(g.C, { min: 1, max: 40, step: 1 }, v => setTableDims(it, g.R, v)), h('span', { class: 'unit' }, '열')));
@@ -1931,7 +1940,8 @@ function renderItemProps(b, items) {
     b.append(h('p', { class: 'hint' }, rg ? '칸 위에서 끌면 여러 칸을 한 번에 고를 수 있어요. 표 전체를 바꾸려면 아래 “표 전체 고르기”를 누르세요.' : '바꾸고 싶은 칸을 누르거나, 칸 위에서 쭉 끌어서 여러 칸을 고르면 그 칸들만 바뀌어요.'));
     if (rg) b.append(h('div', { class: 'btnrow' }, btn('표 전체 고르기', () => { cellSel = null; renderSelection(); renderPropBox(); })));
     b.append(row('글꼴', h('select', { onchange: e => cellPatch(it, { font: e.target.value }) }, Object.entries(FONTS).map(([k, v]) => h('option', { value: k, selected: cs.font === k }, v.label)))));
-    b.append(row('글자 크기', stepper(cs.pt, { min: 4, max: 80, step: 1 }, v => cellPatch(it, { pt: v })), h('span', { class: 'unit' }, 'pt')));
+    b.append(row('글자 크기', stepper(cs.pt, { min: 2, max: 80, step: 1 }, v => cellPatch(it, { pt: v })), h('span', { class: 'unit' }, 'pt')));
+    if (cs.pt < 5) b.append(h('p', { class: 'hint warnhint' }, '5pt보다 작은 글자는 집 프린터에서 뭉개질 수 있어요.'));
     b.append(row('모양', f.files[700] ? btn('굵게', () => cellPatch(it, { bold: !cs.bold }), { class: cs.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '굵게 없음'),
       seg([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']], cs.align, v => cellPatch(it, { align: v }))));
     b.append(row('세로 위치', seg([['top', '위'], ['middle', '가운데'], ['bottom', '아래']], cs.valign, v => cellPatch(it, { valign: v }))));
