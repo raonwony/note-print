@@ -310,3 +310,4 @@ input.cname-in{width:96px;border:1px solid var(--line);border-radius:6px;padding
 .it .body .ln{white-space:pre}
 .thk{display:inline-flex;gap:6px;align-items:center}
 .hint.warnhint{color:#b3361b}
+.row .tonenum{width:58px}

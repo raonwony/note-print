@@ -16,7 +16,7 @@
   /* 색: 인쇄용 CMYK(%)로 저장합니다. 검정은 K 한 가지로만 찍습니다.
      group: basic(검정·회색, 고정) / brand(iLang 브랜드 색, 값 수정 가능) / mine(내 색, 추가·삭제 가능) */
   NP.defaultColors = () => [
-    { id: 'k100', name: '검정', group: 'basic', c: 0, m: 0, y: 0, k: 100, fixed: true },
+    { id: 'k100', name: 'Real Black', group: 'basic', c: 0, m: 0, y: 0, k: 100, fixed: true },
     { id: 'k70', name: '진한 회색', group: 'basic', c: 0, m: 0, y: 0, k: 70, fixed: true },
     { id: 'k40', name: '회색', group: 'basic', c: 0, m: 0, y: 0, k: 40, fixed: true },
     { id: 'k20', name: '연한 회색', group: 'basic', c: 0, m: 0, y: 0, k: 20, fixed: true },
@@ -255,7 +255,7 @@
     const tx0 = I.l, tx1 = w - I.r, ty0 = I.t, ty1 = h - I.b;
     const ax0 = I.l > 0 ? tx0 : -bleed, ax1 = I.r > 0 ? tx1 : w + bleed, ay0 = I.t > 0 ? ty0 : -bleed, ay1 = I.b > 0 ? ty1 : h + bleed;
     let ox, oy;
-    if (g.start === 'corner') { ox = tx0; oy = ty0; } else { ox = tx0 + ((tx1 - tx0) % s) / 2; oy = ty0 + ((ty1 - ty0) % s) / 2; }
+    if (g.start === 'corner') { ox = tx0; oy = ty0; } else if (g.start === 'cornerR') { ox = tx1; oy = ty0; } else { ox = tx0 + ((tx1 - tx0) % s) / 2; oy = ty0 + ((ty1 - ty0) % s) / 2; }
     ox += g.dx || 0; oy += g.dy || 0;
     const xs = [], ys = [];
     for (let i = Math.ceil((ax0 - ox) / s - 1e-9); i <= Math.floor((ax1 - ox) / s + 1e-9); i++) xs.push(r3(ox + i * s));

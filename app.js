@@ -175,7 +175,7 @@ function normalize(s) {
     let id = typeof m.id === 'string' && !mids.has(m.id) ? m.id : 'm' + (mids.size + 100);
     mids.add(id);
     const g = m.grid || {};
-    o.masters.push({ id, name: String(m.name || '바탕'), grid: { type: ['square', 'dot', 'line', 'none'].includes(g.type) ? g.type : 'square', size: clamp(+g.size || 5, 2, 30), tone: clamp(+g.tone || 35, 5, 100), color: mc(g.color || 'k100'), lw: clamp(+g.lw || 0.15, 0.05, 1), dot: clamp(+g.dot || 0.6, 0.2, 3), inset: { l: clamp(+(g.inset || {}).l || 0, 0, 60), t: clamp(+(g.inset || {}).t || 0, 0, 60), r: clamp(+(g.inset || {}).r || 0, 0, 60), b: clamp(+(g.inset || {}).b || 0, 0, 60) }, start: g.start === 'corner' ? 'corner' : 'center', dx: clamp(+g.dx || 0, -60, 60), dy: clamp(+g.dy || 0, -60, 60) }, guides: guides(m.guides), items: items(m.items) });
+    o.masters.push({ id, name: String(m.name || '바탕'), grid: { type: ['square', 'dot', 'line', 'none'].includes(g.type) ? g.type : 'square', size: clamp(+g.size || 5, 2, 30), tone: clamp(+g.tone || 35, 5, 100), color: mc(g.color || 'k100'), lw: clamp(+g.lw || 0.15, 0.05, 1), dot: clamp(+g.dot || 0.6, 0.2, 3), inset: { l: clamp(+(g.inset || {}).l || 0, 0, 60), t: clamp(+(g.inset || {}).t || 0, 0, 60), r: clamp(+(g.inset || {}).r || 0, 0, 60), b: clamp(+(g.inset || {}).b || 0, 0, 60) }, start: ['corner', 'cornerR'].includes(g.start) ? g.start : 'center', dx: clamp(+g.dx || 0, -60, 60), dy: clamp(+g.dy || 0, -60, 60) }, guides: guides(m.guides), items: items(m.items) });
   }
   const pids = new Set();
   for (const p of src.pages || []) {
@@ -1507,6 +1507,7 @@ function stepper(value, { min, max, step }, onChange) {
 function swatches(value, onPick) {
   const out = []; let last = null;
   for (const c of doc.colors) {
+    if (c.group === 'basic' && c.id !== 'k100' && c.id !== value) continue; // 회색 3색은 고르는 칸에서 뺌 (이미 쓰는 색만 표시), Real Black(K100)은 늘 보임
     if (last && last !== c.group) out.push(h('span', { class: 'swsep' }));
     last = c.group;
     out.push(h('button', { type: 'button', class: 'swatch' + (c.id === value ? ' on' : ''), style: `background:${colorRGB(c.id)}`, title: `${c.name}  (C${c.c} M${c.m} Y${c.y} K${c.k})`, 'aria-label': c.name, onclick: () => onPick(c.id) }));
@@ -1576,11 +1577,14 @@ function renderMasterBox() {
   { const ins = g.inset || { l: 0, t: 0, r: 0, b: 0 }, setIns = (k, v) => set(() => { g.inset = { ...ins, [k]: clamp(v, 0, 60) }; }, 'gins');
     b.append(h('div', { class: 'numgrid' }, ...numField('위', ins.t, v => setIns('t', v)), ...numField('아래', ins.b, v => setIns('b', v)), ...numField('왼쪽', ins.l, v => setIns('l', v)), ...numField('오른쪽', ins.r, v => setIns('r', v))));
     b.append(h('div', { class: 'btnrow' }, btn('노트 전체에 (여백 0)', () => set(() => { g.inset = { l: 0, t: 0, r: 0, b: 0 }; })), btn('안쪽 5mm부터', () => set(() => { g.inset = { l: 5, t: 5, r: 5, b: 5 }; }))));
-    b.append(row('시작 위치', seg([['center', '가운데 맞춤'], ['corner', '범위의 왼쪽 위부터']], g.start || 'center', v => set(() => { g.start = v; }))));
+    b.append(row('시작 위치', seg([['center', '가운데 맞춤'], ['corner', '범위의 왼쪽 위부터'], ['cornerR', '범위의 오른쪽 위부터']], g.start || 'center', v => set(() => { g.start = v; }))));
     b.append(h('div', { class: 'numgrid' }, ...numField('가로 이동', g.dx || 0, v => set(() => { g.dx = clamp(v, -60, 60); }, 'gdx')), ...numField('세로 이동', g.dy || 0, v => set(() => { g.dy = clamp(v, -60, 60); }, 'gdy'))));
-    b.append(h('p', { class: 'hint' }, '여백을 주면 모눈이 그 안쪽 칸 안에서만 그려져요(도련·바깥 여백에는 안 그려짐). “왼쪽 위부터”는 범위의 모서리에서 첫 줄이 시작해요. 가로·세로 이동은 모눈을 mm 단위로 밀어요.')); }
+    b.append(h('p', { class: 'hint' }, '여백을 주면 모눈이 그 안쪽 칸 안에서만 그려져요(도련·바깥 여백에는 안 그려짐). “왼쪽 위부터”·“오른쪽 위부터”는 범위의 그 모서리에서 첫 줄이 시작해요. 가로·세로 이동은 모눈을 mm 단위로 밀어요.')); }
   b.append(h('p', { class: 'hint' }, `가로 ${Math.floor(doc.page.w / g.size)}칸 × 세로 ${Math.floor(doc.page.h / g.size)}칸. 가장자리 여백이 같게 가운데 맞춰 그려져요.`));
-  b.append(row('진하기', h('input', { type: 'range', min: 5, max: 100, value: g.tone, oninput: e => { g.tone = +e.target.value; snapshot('tone'); save(); renderBackdrop(); } })));
+  { const setTone = v => { g.tone = clamp(Math.round(+v) || 35, 5, 100); rg.value = g.tone; num.value = g.tone; snapshot('tone'); save(); renderBackdrop(); };
+    const rg = h('input', { type: 'range', min: 5, max: 100, value: g.tone, oninput: e => setTone(e.target.value) });
+    const num = h('input', { type: 'number', class: 'tonenum', min: 5, max: 100, step: 1, value: g.tone, onchange: e => setTone(e.target.value) });
+    b.append(row('진하기', rg, num, h('span', { class: 'unit' }, '%'))); }
   b.append(row('모눈 색', swatches(g.color, c => set(() => { g.color = c; }))));
   b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: doc.snap, onchange: e => { mutate(() => { doc.snap = e.target.checked; }); updateToggles(); } }), '넣은 것을 모눈 칸에 딱 맞춰 붙이기')));
 }
@@ -1592,10 +1596,10 @@ function remapColor(from, to) { // 지운 색을 쓰던 곳을 다른 색으로
   for (const it of items) { fix(it); fix(it.fill); fix(it.pat); for (const cs of Object.values(it.cells || {})) { fix(cs); fix(cs.fill); } }
 }
 function usesNonK(id) { const c = colorOf(id); return c.c > 0 || c.m > 0 || c.y > 0; }
-const colorHint = id => (usesNonK(id) ? h('p', { class: 'hint warnc' }, '이 색은 잉크가 여러 색 섞여서, 작은 글씨는 살짝 번져 보일 수 있어요. 가는 글씨는 검정·회색·Ink Black을 권해요.') : null);
+const colorHint = id => (usesNonK(id) ? h('p', { class: 'hint warnc' }, '이 색은 잉크가 여러 색 섞여서, 작은 글씨는 살짝 번져 보일 수 있어요. 가는 글씨는 Real Black·Ink Black을 권해요.') : null);
 function renderColorBox() {
   const b = $('#colorBox'); b.textContent = '';
-  b.append(h('p', { class: 'hint' }, '모든 색은 인쇄용 CMYK(%)예요. 검정·회색은 먹(K) 한 가지로만 찍혀서 가는 글씨도 또렷해요. 화면 색은 실제 인쇄색과 조금 달라요 — 색이 중요하면 인쇄소 색상 견본으로 확인하세요.'));
+  b.append(h('p', { class: 'hint' }, '모든 색은 인쇄용 CMYK(%)예요. Real Black·Ink Black은 먹(K) 한 가지로만 찍혀서 가는 글씨도 또렷해요. 화면 색은 실제 인쇄색과 조금 달라요 — 색이 중요하면 인쇄소 색상 견본으로 확인하세요.'));
   const refreshAll = () => { renderItems(); renderBackdrop(); renderStrip(); };
   const row2 = (c, { editName, deletable }) => {
     const sw = h('input', { type: 'color', class: 'cpick', value: NP.cmykToHex(c.c, c.m, c.y, c.k), title: '눌러서 화면에서 색 고르기' });
@@ -1607,8 +1611,6 @@ function renderColorBox() {
     return h('div', { class: 'colrow' }, sw, name, ...cm, deletable ? btn('지우기', () => { const used = usedCount(c.id); if (used && !confirm(`이 색을 쓰는 곳이 ${used}군데 있어요. 지우면 검정으로 바뀌어요. 지울까요?`)) return; mutate(() => { remapColor(c.id, 'k100'); doc.colors = doc.colors.filter(x => x !== c); }); refreshAll(); renderPanels(); }) : null);
   };
   const usedCount = id => { let n = 0; const items = [...doc.masters.flatMap(m => m.items), ...doc.pages.flatMap(p => p.items)]; for (const it of items) { if (it.color === id) n++; if (it.fill && it.fill.color === id) n++; if (it.pat && it.pat.color === id) n++; for (const cs of Object.values(it.cells || {})) { if (cs.color === id) n++; if (cs.fill && cs.fill.color === id) n++; } } for (const m of doc.masters) if (m.grid.color === id) n++; return n; };
-  b.append(h('div', { class: 'sub2' }, '기본 (검정·회색, 먹 한 가지)'));
-  b.append(h('div', { class: 'basicrow' }, doc.colors.filter(c => c.group === 'basic').map(c => h('span', { class: 'bchip' }, h('span', { class: 'swatch big', style: `background:${colorRGB(c.id)}` }), `${c.name} K${c.k}`))));
   b.append(h('div', { class: 'sub2' }, 'iLang 브랜드 색 (값을 고칠 수 있어요)'));
   for (const c of doc.colors.filter(x => x.group === 'brand')) b.append(row2(c, {}));
   const mine = doc.colors.filter(x => x.group === 'mine');
