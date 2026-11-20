@@ -238,11 +238,50 @@
   /* ---------- 쪽 번호 (한 번에 자동 + 쪽마다 예외) ---------- */
   // 안전 여백: 기본값(doc.safe)을 네 면에 똑같이 쓰고, 면마다 따로 정한 값(doc.safeSides)이 있으면 그 값을 써요
   NP.safeOf = doc => { const s = doc.safe || 0, o = doc.safeSides || {}, v = k => (o[k] >= 0 ? o[k] : s); return { t: v('t'), r: v('r'), b: v('b'), l: v('l') }; };
+  // 제본 구멍과 추가 여유를 뺀 실제 배치 영역. master는 홀짝 양쪽 페이지에
+  // 반복되므로 자동 반전이면 좌우 구멍 영역을 모두 확보합니다.
+  NP.holeSide = (doc, pageIndex = 0) => {
+    const side = doc && doc.holes && doc.holes.side;
+    return side === 'left' || side === 'right' ? side : (pageIndex % 2 === 0 ? 'left' : 'right');
+  };
+  NP.designArea = (doc, pageIndex = 0, master = false) => {
+    const W = doc.page.w, H = doc.page.h, s = NP.safeOf(doc);
+    let l = s.l, r = s.r, t = s.t, b = s.b;
+    const hl = doc.holes || {};
+    const active = !!hl.on && doc.kind !== 'bound';
+    const strip = active ? Math.max(0, (+hl.edge || 0) + (+hl.dia || 0) / 2 + (+hl.clearance || 0)) : 0;
+    const sides = master && active && (!hl.side || hl.side === 'auto') ? ['left', 'right'] : [NP.holeSide(doc, pageIndex)];
+    if (active && strip > 0) {
+      if (sides.includes('left')) l = Math.max(l, strip);
+      if (sides.includes('right')) r = Math.max(r, strip);
+    }
+    const span = (Array.isArray(hl.gaps) ? hl.gaps : []).reduce((a, v) => a + (+v || 0), 0);
+    const radius = (+hl.dia || 0) / 2 + (+hl.clearance || 0);
+    const firstY = (H - span) / 2, lastY = firstY + span;
+    const holesFitVertically = !active || (firstY - radius >= t && lastY + radius <= H - b);
+    const holesFitHorizontally = !active || (+hl.edge || 0) >= (+hl.dia || 0) / 2;
+    const area = { x: l, y: t, w: W - l - r, h: H - t - b, l, r, t, b, holeStrip: strip,
+      holeSide: master && sides.length > 1 ? 'both' : sides[0],
+      valid: W - l - r > 0.5 && H - t - b > 0.5 && holesFitVertically && holesFitHorizontally,
+      reason: W - l - r <= 0.5 || H - t - b <= 0.5 ? '안전 여백과 구멍 여유를 뺀 영역이 없습니다.' : active && !holesFitHorizontally ? '구멍 중심까지 가장자리 거리가 구멍 반지름보다 작습니다.' : active && !holesFitVertically ? '구멍 간격과 위·아래 여유가 설정한 영역에 들어가지 않습니다.' : '' };
+    return area;
+  };
+  // 개체의 회전을 반영한 바깥 경계. textH를 넘기면 실제 줄바꿈 높이를 사용합니다.
+  NP.itemBounds = (it, textH) => {
+    let x, y, w, h;
+    if (it.type === 'line') { x = Math.min(it.x1, it.x2); y = Math.min(it.y1, it.y2); w = Math.abs(it.x2 - it.x1); h = Math.abs(it.y2 - it.y1); }
+    else { x = +it.x || 0; y = +it.y || 0; w = +it.w || 0; h = it.type === 'text' ? (+textH || +it.pt * NP.MM_PT * 1.35) : (+it.h || 0); }
+    if (!it.rot || it.type === 'line') return { x, y, w, h };
+    const a = (it.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), cx = x + w / 2, cy = y + h / 2;
+    const pts = [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].map(([px,py]) => [cx+(px-cx)*c-(py-cy)*s, cy+(px-cx)*s+(py-cy)*c]);
+    const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs)-Math.min(...xs), h: Math.max(...ys)-Math.min(...ys) };
+  };
   NP.pageNumItem = (doc, idx, pg) => {
     const pn = doc.pageNum; pg = pg || doc.pages[idx];
     if (!pn || !pn.on || !pg) return null;
     const ov = pg.num || {}; if (ov.off) return null;
-    const hh = ov.h || pn.h, vv = ov.v || pn.v, W = doc.page.w, H = doc.page.h, sf = NP.safeOf(doc), mL = Math.max(sf.l, 4), mR = Math.max(sf.r, 4), mT = Math.max(sf.t, 4), mB = Math.max(sf.b, 4), bw = 24, lineH = pn.pt * NP.MM_PT * 1.35;
+    const hh = ov.h || pn.h, vv = ov.v || pn.v, W = doc.page.w, H = doc.page.h, area = NP.designArea(doc, idx), mL = Math.max(area.x, 4), mR = Math.max(W - area.x - area.w, 4), mT = Math.max(area.y, 4), mB = Math.max(H - area.y - area.h, 4), bw = 24, lineH = pn.pt * NP.MM_PT * 1.35;
     const rightPage = idx % 2 === 0; // 1쪽·3쪽… 은 펼친 책의 오른쪽 페이지
     let x, align;
     if (hh === 'center') { x = (W - bw) / 2; align = 'center'; } else if (rightPage) { x = W - mR - bw; align = 'right'; } else { x = mL; align = 'left'; }

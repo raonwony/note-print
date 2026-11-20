@@ -86,7 +86,7 @@
     }
 
     /* ---- 물건 그리기 ---- */
-    const safe = NP.safeOf(doc), safePages = new Set();
+    const safePages = new Set();
 
     /* ---- 사진: 인쇄용 CMYK로 바꿔 넣기 (크기에 맞춰 최대 300dpi까지만 쓰고, 투명한 곳은 흰 종이로) ---- */
     const imgRefs = new Map(), lowRes = [], missingImgs = new Set(), transparentPages = new Set(); let imgCounter = 0;
@@ -128,6 +128,9 @@
     const dashOpts = (dash, th) => dash ? { dashArray: NP.dashOf(th).map(v => v * K), dashPhase: 0 } : {};
     async function drawItem(page, it, gs, pageNo) {
       if (it.hide) return;
+      const safe = NP.designArea(doc, Math.max(0, pageNo - 1));
+      const outOfArea = bounds => !safe.valid || bounds.x < safe.x - 0.01 || bounds.y < safe.y - 0.01 || bounds.x + bounds.w > safe.x + safe.w + 0.01 || bounds.y + bounds.h > safe.y + safe.h + 0.01;
+      if (it.type !== 'text' && outOfArea(NP.itemBounds(it))) safePages.add(pageNo);
       const color = colorOf(it.color, it.type !== 'text' && it.tone ? it.tone / 100 : 1); // 선 농도
       const dd = (dash, th) => (dash ? { dashArray: NP.dashOf(th).map(v => v * K), dashPhase: 0 } : {});
       if (it.type === 'line') { // 두 끝점을 잇는 선 (+ 화살표 머리)
@@ -158,7 +161,7 @@
           lh = it.lh > 0 ? it.lh * gs : 1.35 * Smm;
           hh = lines.length * lh;
         }
-        if (pageNo && (it.x < safe.l || it.x + w > W - safe.r || it.y < safe.t || it.y + hh > H - safe.b)) safePages.add(pageNo);
+        if (pageNo && outOfArea(NP.itemBounds(it, hh))) safePages.add(pageNo);
       }
       const th = -(it.rot || 0) * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
       const LX = x => (x - w / 2) * K, LY = y => (hh / 2 - y) * K; // 물건 안쪽 좌표(mm, 왼쪽 위가 0,0) → 가운데 기준 pt

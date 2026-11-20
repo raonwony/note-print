@@ -97,6 +97,8 @@ details:not([open]) summary::after{content:"▸"}
 svg.grid{position:absolute}
 svg.guides{position:absolute;pointer-events:none;overflow:visible;z-index:50}
 .it{position:absolute;color:#111}
+.it.unsafe{outline:1px dashed #dc2626;outline-offset:1px}
+.it.adjusted{outline:1px dashed #16a34a;outline-offset:1px}
 .it .body{display:block;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;min-height:1em;outline:none;
   font-kerning:none;font-variant-ligatures:none;font-feature-settings:"kern" 0,"liga" 0,"clig" 0,"calt" 0;font-synthesis:none;letter-spacing:0}
 .it svg.shape{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}
@@ -340,6 +342,10 @@ input.cname-in{width:96px;border:1px solid var(--line);border-radius:6px;padding
 .dropchoice button{flex:1;white-space:pre-line;padding:14px 10px;line-height:1.4}
 .formbg{pointer-events:none}
 .rsz-pv{flex-direction:row;align-items:center;gap:8px;background:#cfd6d2;border-radius:10px;padding:12px;max-width:none}
+.layout-preview{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;background:#cfd6d2;border-radius:10px;padding:14px;margin:12px 0}
+.layout-preview .thumb{cursor:default;margin:0;overflow:visible}
+.layout-safe{position:absolute;border:1px dashed #1f6fd0;pointer-events:none;z-index:50;box-sizing:border-box}
+.layout-summary{max-height:260px;overflow:auto;padding:0 4px}
 .rsz-one{display:flex;flex-direction:column;align-items:center;gap:4px}
 .rsz-th{position:relative;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);overflow:hidden}
 .rsz-arrow{font-size:22px;color:#556}

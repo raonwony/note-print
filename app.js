@@ -21,9 +21,10 @@ const SIZE_SETS = {
 // 링 구멍: 구멍 사이 간격(mm). 가장자리 거리는 자료가 없어 추정값(실물 확인 후 수정)
 const HOLE_PRESETS = {
   bible: { name: '바이블 6공', gaps: [19, 19, 51, 19, 19], dia: 5, edge: 6 },
-  a5: { name: 'A5 6공', gaps: [19, 19, 70, 19, 19], dia: 6, edge: 6 },
+  a5: { name: 'A5 6공 (CARL GP 계열)', gaps: [19, 19, 70, 19, 19], dia: 5.5, edge: 6.35, est: false },
   a6: { name: 'A6 6공', gaps: [19, 19, 38, 19, 19], dia: 5, edge: 5 },
   m5: { name: 'M5 5공', gaps: [19, 19, 19, 19], dia: 4, edge: 4 },
+  twenty: { name: 'A5 20공 (CARL GP-J20)', gaps: Array(19).fill(9.5), dia: 5.5, edge: 6.35, est: false },
 };
 const SHEETS = [
   { name: 'A4', w: 210, h: 297 }, { name: 'A3', w: 297, h: 420 }, { name: 'B5', w: 176, h: 250 },
@@ -68,10 +69,10 @@ function toast(msg) {
 /* ---------- 노트 전체(doc) ---------- */
 function defaultDoc() {
   return {
-    v: 5, kind: 'free', page: { w: 105, h: 148 }, bleed: 5, safe: 5, snap: true, colors: NP.defaultColors(),
+    v: 6, kind: 'free', page: { w: 105, h: 148 }, bleed: 5, safe: 5, snap: true, colors: NP.defaultColors(),
     guideSets: [],
     pageNum: { on: false, h: 'outer', v: 'bottom', start: 1, pt: 8, font: 'pretendard', color: 'k100' },
-    holes: { on: false, preset: 'custom', gaps: [19, 19, 38, 19, 19], dia: 5, edge: 6, est: true },
+    holes: { on: false, preset: 'custom', side: 'auto', clearance: 0, gaps: [19, 19, 38, 19, 19], dia: 5, edge: 6, est: true },
     masters: [{ id: 'm1', name: '바탕 1', grid: { type: 'square', size: 5, tone: 35, color: 'k100' }, guides: [], items: [] }],
     pages: [{ id: 'p1', master: 'm1', guides: [], items: [] }],
   };
@@ -86,7 +87,7 @@ function normalize(s) {
     src = { page: s.page, snap: g.snap !== false, masters: [{ id: 'm1', name: '바탕 1', grid: { type: g.type, size: g.size, tone: g.tone }, items: [] }], pages: [{ id: 'p1', master: 'm1', items: s.items }] };
   }
   const old = !(src.v >= 3);
-  const o = { v: 5, kind: ['free', 'binder', 'bound'].includes(src.kind) ? src.kind : 'free', page: { ...d.page, ...src.page }, bleed: clamp(+src.bleed >= 0 ? +src.bleed : 5, 0, 10), safe: clamp(+src.safe >= 0 ? +src.safe : 5, 0, 20), ...(src.safeSides && typeof src.safeSides === 'object' ? { safeSides: Object.fromEntries(['t', 'r', 'b', 'l'].filter(k => +src.safeSides[k] >= 0).map(k => [k, clamp(+src.safeSides[k], 0, 20)])) } : {}), snap: src.snap !== false, colors: d.colors, masters: [], pages: [] };
+  const o = { v: 6, kind: ['free', 'binder', 'bound'].includes(src.kind) ? src.kind : 'free', page: { ...d.page, ...src.page }, bleed: clamp(+src.bleed >= 0 ? +src.bleed : 5, 0, 10), safe: clamp(+src.safe >= 0 ? +src.safe : 5, 0, 20), ...(src.safeSides && typeof src.safeSides === 'object' ? { safeSides: Object.fromEntries(['t', 'r', 'b', 'l'].filter(k => +src.safeSides[k] >= 0).map(k => [k, clamp(+src.safeSides[k], 0, 20)])) } : {}), snap: src.snap !== false, colors: d.colors, masters: [], pages: [] };
   o.page.w = clamp(+o.page.w || d.page.w, 20, 500); o.page.h = clamp(+o.page.h || d.page.h, 20, 500);
   { // 색 목록: 기본·브랜드 색은 항상 있고(브랜드 색은 고친 값 유지), 그 밖의 색은 "내 색"으로 남김
     const saved = Array.isArray(src.colors) ? src.colors.filter(q => q && typeof q.id === 'string') : [];
@@ -102,8 +103,8 @@ function normalize(s) {
   { // 쪽 번호·링 구멍 설정
     const pn = src.pageNum || {}, hl = src.holes || {};
     o.pageNum = { on: !!pn.on, h: pn.h === 'center' ? 'center' : 'outer', v: pn.v === 'top' ? 'top' : 'bottom', start: clamp(Math.round(+pn.start) || 1, -99, 9999), pt: clamp(+pn.pt || 8, 2, 40), font: FONTS[pn.font] ? pn.font : 'pretendard', color: mc(pn.color || 'k100') };
-    const gaps = Array.isArray(hl.gaps) && hl.gaps.length ? hl.gaps.map(v => clamp(+v || 19, 3, 120)).slice(0, 11) : [19, 19, 38, 19, 19];
-    o.holes = { on: !!hl.on, preset: typeof hl.preset === 'string' ? hl.preset : 'custom', gaps, dia: clamp(+hl.dia || 5, 3, 6), edge: clamp(+hl.edge || 6, 1.5, 25), est: hl.est !== false };
+    const gaps = Array.isArray(hl.gaps) && hl.gaps.length ? hl.gaps.map(v => clamp(+v || 19, 3, 120)).slice(0, 19) : [19, 19, 38, 19, 19];
+    o.holes = { on: !!hl.on, preset: typeof hl.preset === 'string' ? hl.preset : 'custom', side: ['left', 'right', 'auto'].includes(hl.side) ? hl.side : 'auto', clearance: clamp(Number.isFinite(+hl.clearance) ? +hl.clearance : 0, 0, 30), gaps, dia: clamp(+hl.dia || 5, 3, 6), edge: clamp(+hl.edge || 6, 1.5, 25), est: hl.est !== false };
   }
   const used = new Set(); let next = 1;
   const all = [...(src.masters || []).flatMap(m => (m && m.items) || []), ...(src.pages || []).flatMap(p => (p && p.items) || [])];
@@ -125,6 +126,12 @@ function normalize(s) {
       let id = Number.isInteger(it.id) && !used.has(it.id) ? it.id : next++;
       used.add(id);
       const b = { type: it.type, id, color: mc(it.color), rot: normDeg(+it.rot || 0), lock: !!it.lock, hide: !!it.hide, gid: typeof it.gid === 'string' ? it.gid : null, ar: !!it.ar, ...(['line', 'shape', 'path', 'table'].includes(it.type) && +it.tone > 0 && +it.tone < 100 ? { tone: clamp(+it.tone, 5, 100) } : {}) };
+  if (it.layout && typeof it.layout === 'object') {
+        const lm = ['auto', 'fixed', 'move', 'scale', 'fit', 'table', 'exclude'].includes(it.layout.mode) ? it.layout.mode : 'auto';
+        const roles = ['content', 'panel', 'background', 'decoration', 'heading', 'checkbox'];
+        const anchors = ['center', 'top-left', 'top', 'top-right', 'left', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+        b.layout = { mode: lm, ...(roles.includes(it.layout.role) ? { role: it.layout.role } : {}), anchor: anchors.includes(it.layout.anchor) ? it.layout.anchor : 'center', ...(Number.isFinite(+it.layout.minPt) ? { minPt: clamp(+it.layout.minPt, 2, 80) } : {}), ...(Number.isFinite(+it.layout.minW) ? { minW: clamp(+it.layout.minW, 0, 500) } : {}), ...(Number.isFinite(+it.layout.minH) ? { minH: clamp(+it.layout.minH, 0, 500) } : {}) };
+      }
       if (it.type === 'text') {
         const font = FONTS[it.font] ? it.font : 'pretendard';
         Object.assign(b, { x: +it.x || 0, y: +it.y || 0, w: +it.w || 30, pt: +it.pt || 12, text: String(it.text ?? ''), bold: !!it.bold && !!FONTS[font].files[700], align: ['left', 'center', 'right', 'justify', 'distribute'].includes(it.align) ? it.align : 'left', font, lh: +it.lh || 0 });
@@ -327,6 +334,16 @@ function gridSVG(m, bleed) {
   return svg;
 }
 function textH(it) { const el = els.get(it.id); return el && el.offsetHeight ? el.offsetHeight / ppm() : it.pt * MM_PT * 1.35; }
+// 배치 미리보기는 실제 DOM 크기가 이전 페이지 상태일 수 있어 문서 데이터에서 글자 높이를 계산합니다.
+function layoutTextHeight(it) {
+  const font = FONTS[it.font] || FONTS.pretendard;
+  const styles = NP.charStyles(it, Array.from(String(it.text || '')).length);
+  const chars = Array.from(String(it.text || ''));
+  const lines = NP.layoutChars(chars, Math.max(0.1, it.w), i => charMM(chars[i] || '', it.font, it.bold, styles[i]?.pt || it.pt));
+  const lineH = it.lh > 0 ? it.lh * gridStep() : it.pt * MM_PT * 1.35;
+  return Math.max(lineH, lines.length * lineH);
+}
+function layoutBox(it) { return NP.itemBounds(it, it.type === 'text' ? layoutTextHeight(it) : undefined); }
 function boxOf(it) { // 돌리기 전의 상자 {x,y,w,h}
   if (it.type === 'line') return { x: Math.min(it.x1, it.x2), y: Math.min(it.y1, it.y2), w: Math.abs(it.x2 - it.x1), h: Math.abs(it.y2 - it.y1) };
   if (it.type === 'text') return { x: it.x, y: it.y, w: it.w, h: textH(it) };
@@ -339,6 +356,10 @@ function bboxOf(it) { // 돌린 뒤 실제로 차지하는 영역
   const pts = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]].map(p => rotPt(p[0], p[1], cx, cy, it.rot));
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
   return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+function markUnsafe(el, it, pageIndex, master = false) {
+  const a = NP.designArea(doc, pageIndex, master), b = NP.itemBounds(it, it.type === 'text' ? textH(it) : undefined);
+  el.classList.toggle('unsafe', !a.valid || b.x < a.x - 0.01 || b.y < a.y - 0.01 || b.x + b.w > a.x + a.w + 0.01 || b.y + b.h > a.y + a.h + 0.01);
 }
 function unionBox(list) {
   const x0 = Math.min(...list.map(b => b.x)), y0 = Math.min(...list.map(b => b.y));
@@ -542,13 +563,13 @@ function renderBackdrop() {
   if (ui.editMaster) { const m = ctxMaster(); if (m) layerM.append(...bgEls([m.bg], doc.bleed, pageNo), gridSVG(m, doc.bleed)); return; }
   const m = masterById(curPage().master);
   layerM.append(...bgEls([m && m.bg, curPage().bg], doc.bleed, pageNo));
-  if (m) { layerM.append(gridSVG(m, doc.bleed)); for (const it of m.items) if (!it.hide) layerM.append(makeItemEl(it, false, pageNo, m.grid.size)); }
+  if (m) { layerM.append(gridSVG(m, doc.bleed)); for (const it of m.items) if (!it.hide) { const el = makeItemEl(it, false, pageNo, m.grid.size); markUnsafe(el, it, ui.pageIdx, true); layerM.append(el); } }
   const ni = NP.pageNumItem(doc, ui.pageIdx); if (ni) layerM.append(makeItemEl(ni, false, pageNo, m ? m.grid.size : 5));
 }
 function renderGuides() { // 재단선·도련·안전선 안내선
   const old = pageEl.querySelector('svg.guides'); if (old) old.remove();
   if (!ui.guides) return;
-  const { w, h: ph } = doc.page, b = doc.bleed, sf = NP.safeOf(doc);
+  const { w, h: ph } = doc.page, b = doc.bleed, sf = NP.safeOf(doc), area = NP.designArea(doc, ui.pageIdx, ui.editMaster);
   const svg = svgEl('svg', { class: 'guides', viewBox: `${-b} ${-b} ${w + 2 * b} ${ph + 2 * b}`, preserveAspectRatio: 'none' });
   svg.style.cssText = `left:${U(-b)};top:${U(-b)};width:${U(w + 2 * b)};height:${U(ph + 2 * b)}`;
   const rect = (x, y, ww, hh, stroke, dash, sw = 1) => svg.append(svgEl('rect', { x, y, width: ww, height: hh, fill: 'none', stroke, 'stroke-width': sw, 'vector-effect': 'non-scaling-stroke', ...(dash ? { 'stroke-dasharray': '6 4' } : {}) }));
@@ -560,9 +581,9 @@ function renderGuides() { // 재단선·도련·안전선 안내선
     svg.append(svgEl('path', { d: `M${-b} ${-b}h${w + 2 * b}v${ph + 2 * b}h${-(w + 2 * b)}z M0 0v${ph}h${w}v${-ph}z`, 'fill-rule': 'evenodd', fill: 'url(#bleedHatch)' }));
     rect(-b, -b, w + 2 * b, ph + 2 * b, '#e5484d', true, 1.4); // 도련 끝(바깥 빨간 점선)
   }
-  if (sf.l + sf.r + sf.t + sf.b > 0) rect(sf.l, sf.t, w - sf.l - sf.r, ph - sf.t - sf.b, '#1f6fd0', true, 2); // 안전선(파란 점선)
+  if (area.w > 0 && area.h > 0) rect(area.x, area.y, area.w, area.h, '#1f6fd0', true, 2); // 안전 여백과 바인더 구멍 여유를 뺀 실제 배치 영역
   if (doc.holes.on && doc.kind !== 'bound') { // 링 구멍 가이드: 홀수 쪽=왼쪽 가장자리, 짝수 쪽=오른쪽 가장자리, 세로는 가운데 기준 대칭
-    const hl = doc.holes, left = ui.editMaster || ui.pageIdx % 2 === 0, hx = left ? hl.edge : w - hl.edge, span = hl.gaps.reduce((a, c) => a + c, 0);
+    const hl = doc.holes, side = NP.holeSide(doc, ui.pageIdx), left = side === 'left', hx = left ? hl.edge : w - hl.edge, span = hl.gaps.reduce((a, c) => a + c, 0);
     let y = (ph - span) / 2;
     for (let i = 0; i <= hl.gaps.length; i++) {
       svg.append(svgEl('circle', { cx: hx, cy: y, r: hl.dia / 2, fill: 'rgba(138,63,252,.10)', stroke: '#8a3ffc', 'stroke-width': 1.2, 'vector-effect': 'non-scaling-stroke' }));
@@ -579,7 +600,7 @@ function renderItems() {
     seen.add(it.id);
     let el = els.get(it.id);
     if (!el) { el = makeItemEl(it, true, pageNo, gs); els.set(it.id, el); layerP.append(el); } else syncItemEl(el, it, pageNo, gs);
-    el.classList.toggle('sel', isSel(it.id));
+    el.classList.toggle('sel', isSel(it.id)); markUnsafe(el, it, ui.pageIdx, ui.editMaster);
   }
   for (const [id, el] of els) if (!seen.has(id)) { el.remove(); els.delete(id); }
   for (const it of items) layerP.append(els.get(it.id)); // 겹치는 순서 = 목록 순서
@@ -1552,15 +1573,15 @@ function renderPaperBox() {
         lsSet(LS.sizes, list); renderPaperBox(); toast(`“${name}” 크기를 저장했어요`);
       }) : null)));
   b.append(row('도련', stepper(doc.bleed, { min: 0, max: 10, step: 1 }, v => { mutate(() => { doc.bleed = v; }); zoom = 1; renderAll(); }), h('span', { class: 'unit' }, 'mm')));
-  b.append(row('안전 여백', stepper(doc.safe, { min: 0, max: 20, step: 1 }, v => { mutate(() => { doc.safe = v; delete doc.safeSides; }); renderGuides(); renderBackdrop(); renderPaperBox(); }), h('span', { class: 'unit' }, 'mm')));
+  b.append(row('안전 여백', stepper(doc.safe, { min: 0, max: 20, step: 1 }, v => { const draft=cloneDoc(doc); draft.safe=v; delete draft.safeSides; requestSafetyChange(draft,'안전 여백 변경 및 자동 조정'); }), h('span', { class: 'unit' }, 'mm')));
   { // 면마다 따로: 위·아래·왼쪽·오른쪽 (정하지 않으면 위의 기본값을 그대로 써요)
-    const sf = NP.safeOf(doc), setSide = (k, v) => { mutate(() => { doc.safeSides = { ...(doc.safeSides || {}), [k]: v }; if (['t', 'r', 'b', 'l'].every(q => (doc.safeSides[q] >= 0 ? doc.safeSides[q] : doc.safe) === doc.safe)) delete doc.safeSides; }); renderGuides(); renderBackdrop(); renderPaperBox(); };
+    const sf = NP.safeOf(doc), setSide = (k, v) => { const draft=cloneDoc(doc); draft.safeSides = { ...(draft.safeSides || {}), [k]: v }; if (['t', 'r', 'b', 'l'].every(q => (draft.safeSides[q] >= 0 ? draft.safeSides[q] : draft.safe) === draft.safe)) delete draft.safeSides; requestSafetyChange(draft,'면별 안전 여백 변경 및 자동 조정'); };
     b.append(h('div', { class: 'sub2' }, '면마다 따로 (위·아래·왼쪽·오른쪽)'));
     for (const [k, nm] of [['t', '위'], ['b', '아래'], ['l', '왼쪽'], ['r', '오른쪽']]) b.append(row(nm, stepper(sf[k], { min: 0, max: 20, step: 1 }, v => setSide(k, v)), h('span', { class: 'unit' }, 'mm')));
-    if (doc.safeSides) b.append(row('', btn('네 면 같게 되돌리기', () => { mutate(() => { delete doc.safeSides; }); renderGuides(); renderBackdrop(); renderPaperBox(); })));
+    if (doc.safeSides) b.append(row('', btn('네 면 같게 되돌리기', () => { const draft=cloneDoc(doc);delete draft.safeSides;requestSafetyChange(draft,'안전 여백 초기화 및 자동 조정'); })));
   }
-  b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: ui.guides, onchange: e => { ui.guides = e.target.checked; renderGuides(); } }), '도련·안전선 보기 (인쇄되지 않아요)')));
-  b.append(h('p', { class: 'hint' }, '위 크기는 최종 재단 크기예요(흰 쪽 = 자르는 자리). 도련은 그 바깥으로 따로 더해지는 빗금 띠(종이 밖, 재단 때 잘려 나가는 여유이며 배경·그림은 빨간 점선까지 채우기)이고, 파란 점선 = 안전선(중요한 글자는 안쪽에)이에요. 목록에 없는 크기(예: 슬림)는 mm로 적고 “이 크기 저장”을 누르세요.'));
+  b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: ui.guides, onchange: e => { ui.guides = e.target.checked; renderGuides(); } }), '도련·안전 영역 보기 (인쇄되지 않아요)')));
+  b.append(h('p', { class: 'hint' }, '파란 점선은 네 면 안전 여백과 바인더 구멍·추가 여유를 뺀 실제 배치 영역이에요. 빨간 점선 개체는 안전 영역 밖에 있어요. 목록에 없는 크기는 mm로 입력하거나 저장할 수 있습니다.'));
 }
 
 function renderMasterBox() {
@@ -1677,15 +1698,13 @@ function renderPropBox() {
 /* ---- 가이드선 도구: 자동 나누기 · 묶음 저장/불러오기 ---- */
 function holeStrip() { // 링 구멍이 차지하는 가장자리(바인더용). 홀수 쪽=왼쪽, 짝수 쪽=오른쪽 (구멍 가이드를 그리는 규칙과 같음)
   if (!(doc.holes.on && doc.kind !== 'bound')) return null;
-  const left = ui.editMaster || ui.pageIdx % 2 === 0;
-  return { left, w: r2(doc.holes.edge + doc.holes.dia / 2) };
+  const side = NP.holeSide(doc, ui.pageIdx), left = side === 'left';
+  return { left, w: r2(doc.holes.edge + doc.holes.dia / 2 + (doc.holes.clearance || 0)) };
 }
 function autoDivide(axis, n) { // axis 'y' = 가로선(위아래로 나눔), 'x' = 세로선(좌우로 나눔)
   n = clamp(Math.round(n) || 2, 2, 24);
-  const sfo = ui.divArea === 'safe' ? NP.safeOf(doc) : { t: 0, r: 0, b: 0, l: 0 }, len = axis === 'x' ? doc.page.w : doc.page.h, list = guideTarget();
-  let a = axis === 'x' ? sfo.l : sfo.t, bb = len - (axis === 'x' ? sfo.r : sfo.b);
-  const hs = axis === 'x' ? holeStrip() : null; // 좌우로 나눌 때는 링 구멍 부분을 빼고 나눠요
-  if (hs) { if (hs.left) a = Math.max(a, hs.w); else bb = Math.min(bb, len - hs.w); }
+  const area = ui.divArea === 'safe' ? NP.designArea(doc, ui.pageIdx, ui.editMaster) : { x: 0, y: 0, w: doc.page.w, h: doc.page.h }, len = axis === 'x' ? area.x + area.w : area.y + area.h, list = guideTarget();
+  let a = axis === 'x' ? area.x : area.y, bb = len;
   const mg = Math.max(0, +ui.divMargin || 0); a += mg; bb -= mg; // 내부 여백: 사방에서 안쪽으로 줄인 만큼만 나눠요
   if (bb - a < 1) return toast('여백이 너무 커서 나눌 자리가 없어요');
   let made = 0;
@@ -1812,6 +1831,19 @@ function renderItemProps(b, items) {
   const dropSpanKey = (it, k) => { if (!it.spans) return; for (const sp of it.spans) delete sp[k]; it.spans = it.spans.filter(sp => sp.pt || sp.color); if (!it.spans.length) delete it.spans; }; // 상자 전체를 바꾸면 일부 글자 서식은 걷어냄
   const locked = items.some(i => i.lock);
   b.append(h('div', { class: 'sub2' }, items.length === 1 ? `${typeName(primary)} 1개 선택${primary.lock ? ' (잠김)' : ''}` : `${items.length}개 선택${items.some(i => i.gid) ? ' (묶음 포함)' : ''}`));
+
+  // 선택 개체의 자동 배치 규칙. 설정하지 않은 기존 개체는 종류별 기본 규칙을 사용합니다.
+  {
+    const q=primary.layout||{}, setLayout=(k,v)=>upd(it=>{const z={...(it.layout||{})};if(v===''||(k==='mode'&&v==='auto')||(k!=='anchor'&&v===0))delete z[k];else z[k]=v;if(Object.keys(z).length)it.layout=z;else delete it.layout;});
+    b.append(h('div',{class:'sub2'},'안전 영역 자동 배치'));
+    b.append(row('조정 방식',h('select',{value:q.mode||'auto',onchange:e=>setLayout('mode',e.target.value)},[['auto','자동 (종류별 기본값)'],['fixed','고정'],['move','위치 이동'],['scale','비율 축소'],['fit','영역에 맞춤'],['table','표 재배치'],['exclude','자동 조정 제외']].map(([v,n])=>h('option',{value:v,selected:(q.mode||'auto')===v},n)))));
+    b.append(row('역할',h('select',{value:q.role||'',onchange:e=>setLayout('role',e.target.value)},[['','기본'],['content','내용'],['panel','패널 채움'],['background','배경 채움'],['decoration','장식'],['heading','제목'],['checkbox','체크 항목']].map(([v,n])=>h('option',{value:v,selected:(q.role||'')===v},n)))));
+    b.append(row('기준점',h('select',{value:q.anchor||'center',onchange:e=>setLayout('anchor',e.target.value)},[['center','가운데'],['top-left','왼쪽 위'],['top','위 가운데'],['top-right','오른쪽 위'],['left','왼쪽 가운데'],['right','오른쪽 가운데'],['bottom-left','왼쪽 아래'],['bottom','아래 가운데'],['bottom-right','오른쪽 아래']].map(([v,n])=>h('option',{value:v,selected:(q.anchor||'center')===v},n)))));
+    if(primary.type==='text'||primary.type==='table')b.append(row(primary.type==='text'?'최소 글자 크기':'최소 셀 글자 크기',stepper(q.minPt||5,{min:2,max:40,step:0.5},v=>setLayout('minPt',v)),h('span',{class:'unit'},'pt')));
+    if(primary.type==='table')b.append(row('최소 셀 가로 / 세로',stepper(q.minW||4,{min:2,max:100,step:0.5},v=>setLayout('minW',v)),h('span',{class:'unit'},'×'),stepper(q.minH||4,{min:2,max:100,step:0.5},v=>setLayout('minH',v)),h('span',{class:'unit'},'mm')));
+    if(primary.type!=='table')b.append(row('최소 크기 가로 / 세로',stepper(q.minW||0,{min:0,max:200,step:1},v=>setLayout('minW',v)),h('span',{class:'unit'},'×'),stepper(q.minH||0,{min:0,max:200,step:1},v=>setLayout('minH',v)),h('span',{class:'unit'},'mm (0=없음)')));
+    b.append(h('p',{class:'hint'},'기본 자동 규칙: 글자·이미지·자유곡선은 비율 축소, 표는 행·열 재배치, 도형·선·체크 항목은 크기를 유지하며 이동합니다. 패널/배경 역할은 영역에 맞춥니다.'));
+  }
 
   // 위치·크기·회전
   const setW = (it, v) => { const o = JSON.parse(JSON.stringify(it)); it.w = Math.max(it.type === 'table' ? 4 : 0.5, r2(v)); if (it.ar && it.type !== 'text') it.h = r2(o.h * it.w / o.w); if (it.type === 'table') rescaleTable(it, o); };
@@ -2349,7 +2381,7 @@ $('#doPdf').onclick = async () => {
       ...(i.lowRes && i.lowRes.length ? [h('p', { class: 'info warn' }, '⚠ 사진이 흐릿하게 인쇄될 수 있어요 (인쇄 크기 기준 해상도)'), h('ul', { class: 'sum' }, i.lowRes.map(x => h('li', {}, `${x.page}쪽: 약 ${x.dpi}dpi (300 이상 권장)`)))] : []),
       ...(i.transparentPages && i.transparentPages.length ? [h('p', { class: 'info' }, `ℹ 투명한 PNG가 ${i.transparentPages.join(', ')}쪽에 있어요 — 투명하게 들어갔어요. 인쇄소가 투명 부분을 합치는(평탄화) 과정에서 달라질 수 있으니 시안을 확인해 보세요.`)] : []),
       ...(i.missingImages && i.missingImages.length ? [h('p', { class: 'info warn' }, `⚠ 찾을 수 없는 사진이 있어 빠졌어요: ${i.missingImages.join(', ')}`)] : []),
-      ...(i.safePages.length ? [h('p', { class: 'info warn' }, `⚠ 안전선(${(s => s.t === s.r && s.r === s.b && s.b === s.l ? s.t + 'mm' : `위 ${s.t}·오른쪽 ${s.r}·아래 ${s.b}·왼쪽 ${s.l}mm`)(NP.safeOf(doc))}) 밖으로 나온 글자가 있는 쪽: ${i.safePages.join(', ')}쪽 — 잘릴 수 있어요`)] : []));
+      ...(i.safePages.length ? [h('p', { class: 'info warn' }, `⚠ 바인더 구멍 영역 또는 인쇄 안전 영역을 벗어난 개체가 있는 쪽: ${i.safePages.join(', ')}쪽 — 미리보기에서 빨간 테두리를 확인해 주세요`)] : []));
   } catch (err) {
     out.textContent = '';
     out.append(h('p', { class: 'info warn' }, `만들지 못했어요: ${err.message || err}`));
@@ -2435,7 +2467,7 @@ window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() =
 /* ---------- 노트 종류 · 쪽 번호 · 링 구멍 패널 ---------- */
 function renderKindBox() {
   const b = $('#kindBox'); b.textContent = '';
-  b.append(row('종류', h('select', { onchange: e => { mutate(() => { doc.kind = e.target.value; if (doc.kind === 'bound') doc.holes.on = false; }); renderPanels(); renderGuides(); renderStrip(); } },
+  b.append(row('종류', h('select', { onchange: e => { const draft=cloneDoc(doc); draft.kind=e.target.value; if (draft.kind !== 'binder') draft.holes.on=false; requestSafetyChange(draft,'제본 종류 변경 및 안전 영역 조정'); } },
     [['free', '자유 (규칙 없음)'], ['binder', '바인더용 속지 (낱장)'], ['bound', '노출제본 속지 (4쪽 단위)']].map(([v, l]) => h('option', { value: v, selected: doc.kind === v }, l)))));
   b.append(h('p', { class: 'hint' }, doc.kind === 'binder'
     ? '낱장 인쇄예요. 쪽은 1쪽씩 추가돼요. 양면이라 1쪽=앞면, 2쪽=뒷면이고, 홀수 쪽은 왼쪽·짝수 쪽은 오른쪽에 구멍 가이드가 그려져요. PDF는 쪽수가 홀수면 끝에 빈 쪽 1개를 붙여요.'
@@ -2467,17 +2499,20 @@ function renderHoleBox() {
   const b = $('#holeBox'); b.textContent = '';
   const hl = doc.holes;
   if (doc.kind === 'bound') { b.append(h('p', { class: 'hint' }, '노출제본에는 링 구멍이 없어요.')); return; }
-  const after = () => { renderGuides(); renderHoleBox(); };
-  b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: hl.on, onchange: e => { mutate(() => { hl.on = e.target.checked; }); after(); } }), '링 구멍 가이드 보이기 (인쇄되지 않아요)')));
+  const change = (fn, title='바인더 설정 변경 및 자동 조정') => { const draft=cloneDoc(doc); fn(draft.holes,draft); requestSafetyChange(draft,title); };
+  b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: hl.on, onchange: e => change((q,d) => { q.on=e.target.checked; if(q.on)d.kind='binder'; }) }), '바인더 구멍 가이드 사용')));
   if (!hl.on) return;
-  b.append(row('크기별 기본값', h('select', { onchange: e => { const p = HOLE_PRESETS[e.target.value]; if (!p) return; mutate(() => { Object.assign(hl, { preset: e.target.value, gaps: [...p.gaps], dia: p.dia, edge: p.edge, est: true }); }); after(); } },
+  b.append(row('배치 쪽', h('select',{onchange:e=>change(q=>{q.side=e.target.value;},'바인더 위치 변경 및 자동 조정')},[['auto','페이지 홀짝에 따라 자동 반전'],['left','왼쪽 고정'],['right','오른쪽 고정']].map(([v,n])=>h('option',{value:v,selected:(hl.side||'auto')===v},n)))));
+  b.append(row('크기별 기본값', h('select', { onchange: e => { const p = HOLE_PRESETS[e.target.value]; if (!p) return; change((q,d) => { const gaps=p.gaps ? [...p.gaps] : Array(19).fill(r2(clamp((d.page.h-q.dia-2*q.clearance)/19,3,120))); Object.assign(q, { preset: e.target.value, gaps, dia: p.dia, edge: p.edge, est: p.est !== false, on: true }); d.kind='binder'; }, '바인더 규격 변경 및 자동 조정'); } },
     h('option', { value: '', selected: !HOLE_PRESETS[hl.preset] }, '직접 설정'), Object.entries(HOLE_PRESETS).map(([k, p]) => h('option', { value: k, selected: hl.preset === k }, p.name)))));
-  b.append(row('구멍 지름', stepper(hl.dia, { min: 3, max: 6, step: 0.5 }, v => { mutate(() => { hl.dia = v; }, 'hdia'); renderGuides(); }), h('span', { class: 'unit' }, 'mm (3~6)')));
-  b.append(row('가장자리 거리', stepper(hl.edge, { min: 1.5, max: 25, step: 0.5 }, v => { mutate(() => { hl.edge = v; hl.est = false; }, 'hedge'); renderGuides(); renderHoleBox(); }), h('span', { class: 'unit' }, 'mm (구멍 중심까지)')));
+  b.append(row('구멍 지름', stepper(hl.dia, { min: 3, max: 6, step: 0.5 }, v => change(q=>{q.dia=v;q.preset='custom';q.est=false;})), h('span', { class: 'unit' }, 'mm (3~6)')));
+  b.append(row('가장자리 거리', stepper(hl.edge, { min: 1.5, max: 25, step: 0.5 }, v => change(q=>{q.edge=v;q.preset='custom';q.est=false;})), h('span', { class: 'unit' }, 'mm (구멍 중심까지)')));
+  b.append(row('구멍과 디자인 사이 여유', stepper(hl.clearance||0, { min: 0, max: 30, step: 0.5 }, v => change(q=>{q.clearance=v;q.preset='custom';})), h('span', { class: 'unit' }, 'mm')));
   b.append(h('div', { class: 'sub2' }, `구멍 사이 간격 (위에서부터, mm) — 구멍 ${hl.gaps.length + 1}개`));
-  b.append(h('div', { class: 'holegaps' }, hl.gaps.map((g, i) => h('input', { type: 'number', step: 0.5, min: 3, max: 120, value: g, 'aria-label': `${i + 1}번째 간격`, onchange: e => { const v = clamp(+e.target.value || 19, 3, 120); mutate(() => { hl.gaps[i] = v; hl.preset = 'custom'; }, 'hgap'); renderGuides(); } })),
-    btn('＋ 구멍', () => { if (hl.gaps.length >= 11) return; mutate(() => { hl.gaps.push(19); hl.preset = 'custom'; }); after(); }), btn('－ 구멍', () => { if (hl.gaps.length <= 1) return; mutate(() => { hl.gaps.pop(); hl.preset = 'custom'; }); after(); })));
-  b.append(h('p', { class: 'hint' + (hl.est ? ' warnc' : '') }, (hl.est ? '※ 가장자리 거리와 지름은 자료로 확정하지 못한 추정값이에요. 가지고 계신 속지를 재서 고쳐 주세요(고치면 이 표시가 사라져요). ' : '') + '구멍은 종이 세로 가운데를 기준으로 위아래 대칭이에요. 홀수 쪽은 왼쪽, 짝수 쪽은 오른쪽에 그려져요.'));
+  b.append(h('div', { class: 'holegaps' }, hl.gaps.map((g, i) => h('input', { type: 'number', step: 0.5, min: 3, max: 120, value: g, 'aria-label': `${i + 1}번째 간격`, onchange: e => { const v = clamp(+e.target.value || 19, 3, 120); change(q=>{q.gaps[i]=v;q.preset='custom';}); } })),
+    btn('＋ 구멍', () => change(q=>{if(q.gaps.length<19){q.gaps.push(19);q.preset='custom';}}),{disabled:hl.gaps.length>=19}), btn('－ 구멍', () => change(q=>{if(q.gaps.length>1){q.gaps.pop();q.preset='custom';}} , '바인더 구멍 수 변경 및 자동 조정'),{disabled:hl.gaps.length<=1})));
+  const area=NP.designArea(doc,ui.pageIdx); b.append(h('p',{class:'hint'+(!area.valid?' warnhint':'')},area.valid?`계산된 디자인 영역 ${r2(area.w)} × ${r2(area.h)}mm · 구멍 여유 폭 ${r2(area.holeStrip)}mm`:`설정 확인 필요: ${area.reason}`));
+  b.append(h('p', { class: 'hint' + (hl.est ? ' warnc' : '') }, (hl.est ? '※ 바이블·A6·M5 기본값은 추정값입니다. 실제 바인더 규격을 확인해 주세요. ' : '※ A5 6공·20공은 CARL GP 계열의 제조사 규격값을 사용합니다. 바인더 제조사별 차이는 확인해 주세요. ') + '구멍 안내선은 화면 전용이며 인쇄되지 않아요.'));
 }
 
 /* ---------- 용지 크기 바꾸기 (개체도 같이 맞추기) ---------- */
@@ -2486,7 +2521,7 @@ const RESIZE_MODES = [
   ['content', '② 개체를 새 쪽에 꽉 맞추기', '쪽마다 개체 전체를 묶어서, 새 쪽의 안전선 안에 들어가게 같은 비율로 크기를 바꿔요.'],
   ['stretch', '③ 가로·세로 각각 맞추기', '가로는 가로 배율, 세로는 세로 배율로 바꿔요. 표·네모는 쪽 모양에 딱 맞고, 사진·돌린 개체·비율 고정 개체는 찌그러지지 않게 둬요.'],
   ['move', '④ 크기는 그대로 · 위치만 옮기기', '개체(묶음은 묶음째) 크기는 두고, 쪽에서의 상대 위치만 새 쪽에 맞춰 옮겨요.'],
-  ['none', '⑤ 치수만 바꾸기 (예전 방식)', '개체는 그 자리 그대로 둬요. 쪽이 작아지면 밖으로 나갈 수 있어요.'],
+  ['none', '⑤ 기존 좌표 유지', '기존 좌표를 유지하되, 바인더 구멍·안전 영역을 침범하는 개체에는 자동 안전 조정을 적용합니다.'],
 ];
 let lastResizeMode = 'fit';
 const docHasContent = d => d.pages.some(p => p.items.length || p.guides.length) || d.masters.some(m => m.items.length || m.guides.length);
@@ -2494,7 +2529,7 @@ function resizeDoc(d, nw, nh, mode) { // d를 직접 바꿔요 (미리보기는 
   const W = d.page.w, H = d.page.h, sx = nw / W, sy = nh / H;
   d.page.w = nw; d.page.h = nh;
   if (mode === 'none' || (sx === 1 && sy === 1)) return;
-  const tH = it => (it.type === 'text' ? textH(it) : 0);
+  const tH = it => (it.type === 'text' ? layoutTextHeight(it) : 0);
   const mapAll = (holder, ax, ay, ox, oy) => {
     for (const it of holder.items) { if (it.type === 'text') it._h = tH(it); NP.mapItem(it, ax, ay, ox, oy); }
     for (const g of holder.guides) g.pos = r2(g.axis === 'x' ? g.pos * ax + ox : g.pos * ay + oy);
@@ -2506,7 +2541,7 @@ function resizeDoc(d, nw, nh, mode) { // d를 직접 바꿔요 (미리보기는 
     const sf = NP.safeOf(d), T = { x: sf.l, y: sf.t, w: nw - sf.l - sf.r, h: nh - sf.t - sf.b };
     for (const q of holders) {
       if (!q.items.length) { for (const g of q.guides) g.pos = r2(g.pos * (g.axis === 'x' ? sx : sy)); continue; }
-      const B = unionBox(q.items.map(bboxOf)), k = Math.min(T.w / Math.max(B.w, 0.1), T.h / Math.max(B.h, 0.1));
+      const B = unionBox(q.items.map(layoutBox)), k = Math.min(T.w / Math.max(B.w, 0.1), T.h / Math.max(B.h, 0.1));
       mapAll(q, k, k, T.x + (T.w - B.w * k) / 2 - B.x * k, T.y + (T.h - B.h * k) / 2 - B.y * k);
     }
     return;
@@ -2516,7 +2551,7 @@ function resizeDoc(d, nw, nh, mode) { // d를 직접 바꿔요 (미리보기는 
       const units = new Map();
       for (const it of q.items) { const key = it.gid || 'i' + it.id; if (!units.has(key)) units.set(key, []); units.get(key).push(it); }
       for (const list of units.values()) {
-        const B = unionBox(list.map(bboxOf)), cx = B.x + B.w / 2, cy = B.y + B.h / 2;
+        const B = unionBox(list.map(layoutBox)), cx = B.x + B.w / 2, cy = B.y + B.h / 2;
         const dx = r2(cx * sx - cx), dy = r2(cy * sy - cy);
         for (const it of list) moveItem(it, dx, dy);
       }
@@ -2524,9 +2559,135 @@ function resizeDoc(d, nw, nh, mode) { // d를 직접 바꿔요 (미리보기는 
     }
   }
 }
+const cloneDoc = d => JSON.parse(JSON.stringify(d));
+function layoutModeOf(it) {
+  const q = it.layout || {}, m = q.mode || 'auto';
+  if (m !== 'auto') return m;
+  if (q.role === 'panel' || q.role === 'background') return 'fit';
+  if (it.type === 'table') return 'table';
+  if (['text', 'image', 'path'].includes(it.type)) return 'scale';
+  return 'move';
+}
+function placeBoxInArea(box, area, anchor = 'center') {
+  const parts = anchor.split('-'), ax = parts.length === 2 ? parts[1] : (['left','right'].includes(anchor) ? anchor : 'center'), ay = parts.length === 2 ? parts[0] : (['top','bottom'].includes(anchor) ? anchor : 'center');
+  let x = area.x + (area.w - box.w) / 2, y = area.y + (area.h - box.h) / 2;
+  if (ax === 'left') x = area.x; else if (ax === 'right') x = area.x + area.w - box.w;
+  if (ay === 'top') y = area.y; else if (ay === 'bottom') y = area.y + area.h - box.h;
+  return { x: r2(x), y: r2(y) };
+}
+function mapLayoutItems(items, k, x, y, oldBox) {
+  const ox = x - oldBox.x * k, oy = y - oldBox.y * k;
+  for (const it of items) { if (it.type === 'text') it._h = layoutTextHeight(it); NP.mapItem(it, k, k, ox, oy); delete it._h; }
+}
+function adjustTableToArea(it, area) {
+  const g = NP.tableGeom(it), minW = Math.max(2, +(it.layout || {}).minW || 4), minH = Math.max(2, +(it.layout || {}).minH || 4), minPt = +(it.layout || {}).minPt || 6;
+  if (it.rot) return { ok: false, reason: '회전된 표는 표 재배치 전에 회전을 풀어 주세요.' };
+  const tw = Math.min(it.w, area.w), th = Math.min(it.h, area.h), sx = tw / it.w, sy = th / it.h;
+  if (it.cw.length * minW > tw + 0.01 || it.rh.length * minH > th + 0.01) return { ok: false, reason: `표 최소 셀 크기(${minW}×${minH}mm)를 유지할 수 없습니다.` };
+  const sp = Math.min(sx, sy), tooSmall = Object.values(it.cells || {}).some(c => c.text && c.pt * sp < minPt);
+  if (tooSmall) return { ok: false, reason: `셀 글자가 최소 ${minPt}pt보다 작아집니다.` };
+  const old = { ...it, cw: [...it.cw], rh: [...it.rh] };
+  it.cw = it.cw.map(v => Math.max(minW, r2(v * sx))); it.rh = it.rh.map(v => Math.max(minH, r2(v * sy)));
+  if (it.cw.reduce((a,b)=>a+b,0) > area.w + 0.01 || it.rh.reduce((a,b)=>a+b,0) > area.h + 0.01) return { ok: false, reason: '표의 최소 행·열 크기가 안전 영역을 넘습니다.' };
+  it.w = r2(it.cw.reduce((a,b)=>a+b,0)); it.h = r2(it.rh.reduce((a,b)=>a+b,0));
+  for (const c of Object.values(it.cells || {})) if (c.pt) c.pt = Math.max(minPt, Math.round(c.pt * sp * 10) / 10);
+  const p = placeBoxInArea({ x: it.x, y: it.y, w: it.w, h: it.h }, area, (it.layout || {}).anchor || 'center'); it.x = p.x; it.y = p.y;
+  return { ok: true, changed: it.w !== old.w || it.h !== old.h || it.x !== old.x || it.y !== old.y };
+}
+function autoAdjustDocument(d) {
+  const report = { doc: d, changed: [], changedIds: [], excluded: [], warnings: [], invalid: [] };
+  const applyHolder = (holder, area, label, isMaster = false) => {
+    if (!area.valid) { report.invalid.push(`${label}: ${area.reason}`); return; }
+    const items = holder.items || [], grouped = new Map(), singles = [];
+    for (const it of items) { if (it.gid) { if (!grouped.has(it.gid)) grouped.set(it.gid, []); grouped.get(it.gid).push(it); } else singles.push([it]); }
+    for (const list of [...singles, ...grouped.values()]) {
+      const group = list.length > 1, box = unionBox(list.map(layoutBox));
+      const outside = box.x < area.x - .01 || box.y < area.y - .01 || box.x + box.w > area.x + area.w + .01 || box.y + box.h > area.y + area.h + .01;
+      const frozen = list.some(it => it.lock || layoutModeOf(it) === 'fixed' || layoutModeOf(it) === 'exclude');
+      const labelObj = list.map(i => i.id).join(',');
+      if (!outside && !(list.length === 1 && list[0].layout && list[0].layout.mode === 'table')) continue;
+      if (frozen) { report.excluded.push(`${label} 개체 ${labelObj}${group ? ' 그룹' : ''}`); if (outside) report.warnings.push(`${label} 개체 ${labelObj}은 잠금·고정·제외 설정으로 그대로 두어 안전 영역을 벗어납니다.`); continue; }
+      if (group) {
+        const modes = [...new Set(list.map(layoutModeOf))], mode = modes.length === 1 ? modes[0] : 'auto';
+        if (mode === 'table' && list.length === 1 && list[0].type === 'table') { const z=adjustTableToArea(list[0],area); if(!z.ok) report.warnings.push(`${label} 표 ${labelObj}: ${z.reason}`); else if(z.changed) {report.changed.push(`${label} 표 ${labelObj}: 재배치`);report.changedIds.push(...list.map(i=>i.id));} continue; }
+        if (mode === 'exclude' || mode === 'fixed') { report.excluded.push(`${label} 그룹 ${labelObj}`); continue; }
+        let k = 1;
+        if (mode === 'scale' || mode === 'fit' || mode === 'auto' || box.w > area.w || box.h > area.h) k = Math.min(1, area.w / Math.max(.1, box.w), area.h / Math.max(.1, box.h));
+        if ((mode === 'move') && (box.w > area.w || box.h > area.h)) k = 1;
+        if (list.some(it => (it.type === 'text' && it.pt * k < ((it.layout || {}).minPt || 5)) || box.w * k < ((it.layout || {}).minW || 0) || box.h * k < ((it.layout || {}).minH || 0))) { report.warnings.push(`${label} 그룹 ${labelObj}: 최소 개체 크기를 지키며 안전 영역에 넣을 수 없습니다.`); continue; }
+        const scaled = { x: box.x * k, y: box.y * k, w: box.w * k, h: box.h * k }, pos = placeBoxInArea(scaled, area, (list[0].layout || {}).anchor || 'center');
+        if (k >= 1 && (box.w > area.w || box.h > area.h)) { report.warnings.push(`${label} 그룹 ${labelObj}: 그룹이 안전 영역보다 커 이동할 수 없습니다.`); continue; }
+        mapLayoutItems(list, k, pos.x, pos.y, box); report.changed.push(`${label} 그룹 ${labelObj}: ${k < .999 ? '비율 축소·이동' : '이동'}`); report.changedIds.push(...list.map(i=>i.id)); continue;
+      }
+      const it = list[0], mode = layoutModeOf(it), b = layoutBox(it);
+      if (mode === 'exclude' || mode === 'fixed') { report.excluded.push(`${label} ${it.type} ${it.id}`); if(outside) report.warnings.push(`${label} 개체 ${it.id}은 고정·제외되어 안전 영역을 벗어납니다.`); continue; }
+      if (mode === 'table') { const z=adjustTableToArea(it,area); if(!z.ok) report.warnings.push(`${label} 표 ${it.id}: ${z.reason}`); else if(z.changed) {report.changed.push(`${label} 표 ${it.id}: 재배치`);report.changedIds.push(it.id);} continue; }
+      if (mode === 'fit' && it.type === 'shape' && !it.ar && !it.rot) {
+        const minW=(it.layout||{}).minW||0, minH=(it.layout||{}).minH||0;
+        if(area.w<minW||area.h<minH){report.warnings.push(`${label} 도형 ${it.id}: 최소 크기를 유지할 수 없습니다.`);continue;}
+        it.x=area.x;it.y=area.y;it.w=area.w;it.h=area.h;report.changed.push(`${label} 도형 ${it.id}: 영역에 맞춤`);report.changedIds.push(it.id);continue;
+      }
+      let k = 1;
+      if (mode === 'scale' || mode === 'fit') k = Math.min(1, area.w / Math.max(.1,b.w), area.h / Math.max(.1,b.h));
+      if (mode === 'move' && (b.w > area.w || b.h > area.h)) { report.warnings.push(`${label} 개체 ${it.id}: 개체가 안전 영역보다 커서 이동할 수 없습니다.`); continue; }
+      if (it.type === 'text' && it.pt * k < ((it.layout || {}).minPt || 5)) { report.warnings.push(`${label} 글자 ${it.id}: 최소 글자 크기보다 작아져 조정하지 않았습니다.`); continue; }
+      if (b.w * k < ((it.layout || {}).minW || 0) || b.h * k < ((it.layout || {}).minH || 0)) { report.warnings.push(`${label} 개체 ${it.id}: 최소 크기를 지킬 수 없어 조정하지 않았습니다.`); continue; }
+      if (k >= 1 && (b.w > area.w || b.h > area.h)) { report.warnings.push(`${label} 개체 ${it.id}: 안전 영역보다 커 조정하지 않았습니다.`); continue; }
+      const dest = { x:b.x*k,y:b.y*k,w:b.w*k,h:b.h*k }, pos = placeBoxInArea(dest,area,(it.layout||{}).anchor||'center');
+      if(k<1){mapLayoutItems([it],k,pos.x,pos.y,b);report.changed.push(`${label} ${it.type} ${it.id}: 비율 축소·이동`);report.changedIds.push(it.id);}
+      else if(outside){moveItem(it,r2(pos.x-b.x),r2(pos.y-b.y));report.changed.push(`${label} ${it.type} ${it.id}: 이동`);report.changedIds.push(it.id);}
+    }
+  };
+  for (const m of d.masters) applyHolder(m, NP.designArea(d, 0, true), `바탕 ${m.name}`, true);
+  d.pages.forEach((p, i) => applyHolder(p, NP.designArea(d, i), `${i + 1}쪽`));
+  return report;
+}
+function saveLayoutVersion(source) {
+  const saved = getSaved(), now = new Date(), stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+  const key = `레이아웃 조정 전 ${stamp}`; saved[key] = { t: now.getTime(), state: cloneDoc(source) };
+  const old = Object.keys(saved).filter(k=>k.startsWith('레이아웃 조정 전 ')).sort((a,b)=>saved[a].t-saved[b].t);
+  while(old.length>20) delete saved[old.shift()];
+  if (!lsSet(LS.saved, saved)) return false;
+  lastBackup = JSON.stringify(source); return true;
+}
+function openSafetyChange(draft, title = '바인더·안전 영역 자동 조정') {
+  const planned = autoAdjustDocument(draft), modal = h('div', { class: 'modal', id: 'layoutModal' }), card = h('div', { class: 'card formcard layoutcard' }); modal.append(card);
+  const close = () => { modal.remove(); renderAll(); };
+  modal.addEventListener('pointerdown', e => { if (e.target === modal) close(); });
+  const thumb = (d, label, after = false) => {
+    const saved = doc; doc = d;
+    try {
+      const idx = Math.min(ui.pageIdx, d.pages.length - 1), { w, h: ph } = d.page, u = Math.min(230 / ph, 220 / w), pg = d.pages[idx], el = h('div', { class: 'thumb rsz-th', style: `width:${w*u}px;height:${ph*u}px;--u:${u}px` }, buildPageDOM(pg, idx + 1));
+      const area = NP.designArea(d, idx), safe = h('div', { class: 'layout-safe', style: `left:${area.x*u}px;top:${area.y*u}px;width:${area.w*u}px;height:${area.h*u}px` }); el.append(safe);
+      const master = d.masters.find(m => m.id === pg.masterId);
+      for (const it of [...(master?.items || []), ...(pg.items || [])]) {
+        const node = el.querySelector(`[data-id="${it.id}"]`);
+        if (node) { markUnsafe(node, it, idx, !!master?.items?.some(x => x.id === it.id)); if (after && planned.changedIds.includes(it.id)) node.classList.add('adjusted'); }
+      }
+      if (after) for (const id of planned.changedIds) { const node=el.querySelector(`[data-id="${id}"]`); if(node)node.classList.add('adjusted'); }
+      return h('div', { class: 'rsz-one' }, el, h('div', { class: 'muted small' }, `${label} · ${w}×${ph}mm`));
+    } finally { doc = saved; }
+  };
+  card.append(h('div',{class:'card-head'},h('h2',{},title),btn('닫기 ✕',close,{class:'ghost'})));
+  const pv=h('div',{class:'layout-preview'},thumb(doc,'변경 전'),h('div',{class:'rsz-arrow'},'→'),thumb(draft,'변경 후',true)); card.append(pv);
+  const summary=h('div',{class:'layout-summary'});
+  summary.append(h('p',{},`자동 조정 ${planned.changed.length}개 · 제외/고정 ${planned.excluded.length}개 · 확인 필요 ${planned.warnings.length}개`));
+  if(planned.invalid.length)summary.append(h('p',{class:'info warn'},planned.invalid.join(' / ')));
+  for(const x of planned.warnings.slice(0,12))summary.append(h('p',{class:'info warn'},'⚠ '+x));
+  for(const x of planned.excluded.slice(0,8))summary.append(h('p',{class:'info'},'제외: '+x));
+  if(planned.changed.length)summary.append(h('p',{class:'info'},'조정: '+planned.changed.slice(0,12).join(' · ')));
+  summary.append(h('p',{class:'hint'},'파란 점선은 실제 사용 가능 영역, 빨간 점선은 이를 벗어난 개체, 초록 점선은 자동 조정된 개체입니다. 적용 전 원본은 “내 노트”에 자동 백업됩니다.'));
+  card.append(summary);
+  card.append(h('div',{class:'card-foot'},btn('취소',close,{class:'ghost'}),btn('적용',()=>{
+    if(planned.invalid.length)return toast('안전 영역 설정이 유효하지 않아 적용하지 않았어요');
+    if(!saveLayoutVersion(doc))return toast('원본을 보존할 저장 공간이 부족해요. 먼저 파일로 내보내 주세요');
+    mutate(()=>{doc=planned.doc;}); modal.remove(); zoom=1; els.clear(); renderAll(); toast('레이아웃을 적용했어요. 원본은 내 노트에서 복구할 수 있어요');
+  },{class:'primary big',disabled:!!planned.invalid.length})));
+  document.body.append(modal);
+}
+function requestSafetyChange(draft, title) { openSafetyChange(draft, title); }
 function requestResize(nw, nh) {
   if (nw === doc.page.w && nh === doc.page.h) return;
-  if (!docHasContent(doc)) { mutate(() => { doc.page.w = nw; doc.page.h = nh; }); zoom = 1; renderAll(); return; }
   openResizeDialog(nw, nh);
 }
 function openResizeDialog(nw, nh) {
@@ -2535,29 +2696,39 @@ function openResizeDialog(nw, nh) {
   const modal = h('div', { class: 'modal', id: 'resizeModal' }), card = h('div', { class: 'card formcard' }); modal.append(card);
   const close = () => { modal.remove(); renderPaperBox(); };
   modal.addEventListener('pointerdown', e => { if (e.target === modal) close(); });
-  const thumb = (d, label) => { // d 문서로 지금 쪽을 그림 (잠깐 문서를 바꿔 끼워 그린 뒤 되돌림)
+  let previewReport = { changedIds: [], changed: [], excluded: [], warnings: [], invalid: [] };
+  const thumb = (d, label, after = false) => { // d 문서로 지금 쪽을 그림 (잠깐 문서를 바꿔 끼워 그린 뒤 되돌림)
     const saved = doc; doc = d;
     try {
       const { w, h: ph } = d.page, u = Math.min(230 / ph, 220 / w), pg = d.pages[ui.pageIdx];
-      return h('div', { class: 'rsz-one' }, h('div', { class: 'thumb rsz-th', style: `width:${w * u}px;height:${ph * u}px;--u:${u}px` }, buildPageDOM(pg, ui.pageIdx + 1)), h('div', { class: 'muted small' }, `${label} · ${w}×${ph}mm`));
+      const box=h('div', { class: 'thumb rsz-th', style: `width:${w * u}px;height:${ph * u}px;--u:${u}px` }, buildPageDOM(pg, ui.pageIdx + 1)), area=NP.designArea(d,ui.pageIdx);
+      box.append(h('div',{class:'layout-safe',style:`left:${area.x*u}px;top:${area.y*u}px;width:${area.w*u}px;height:${area.h*u}px`}));
+      const master=d.masters.find(q=>q.id===pg.master), all=[...(master?master.items:[]),...pg.items];
+      for(const it of all){const node=box.querySelector(`[data-id="${it.id}"]`);if(node){markUnsafe(node,it,ui.pageIdx,!!master&&master.items.includes(it));if(after&&previewReport.changedIds.includes(it.id))node.classList.add('adjusted');}}
+      return h('div', { class: 'rsz-one' }, box, h('div', { class: 'muted small' }, `${label} · ${w}×${ph}mm`));
     } finally { doc = saved; }
   };
   function draw() {
     card.textContent = '';
     card.append(h('div', { class: 'card-head' }, h('h2', {}, '용지 크기 바꾸기'), btn('닫기 ✕', close, { class: 'ghost' })));
-    const after = JSON.parse(JSON.stringify(doc)); resizeDoc(after, st.w, st.h, st.mode);
+    const after = cloneDoc(doc); resizeDoc(after, st.w, st.h, st.mode); previewReport=autoAdjustDocument(after);
     const body = h('div', { class: 'formbody' }), left = h('div', { class: 'fleft rsz-pv' }), right = h('div', { class: 'fright' });
-    left.append(thumb(doc, '바꾸기 전'), h('div', { class: 'rsz-arrow' }, '→'), thumb(after, '바꾼 뒤'));
+    left.append(thumb(doc, '바꾸기 전'), h('div', { class: 'rsz-arrow' }, '→'), thumb(after, '바꾼 뒤',true));
     body.append(left, right); card.append(body);
     right.append(row('새 크기', stepper(st.w, { min: 20, max: 500, step: 1 }, v => { st.w = v; draw(); }), h('span', { class: 'unit' }, '×'), stepper(st.h, { min: 20, max: 500, step: 1 }, v => { st.h = v; draw(); }), h('span', { class: 'unit' }, 'mm')));
     right.append(h('div', { class: 'sub2' }, '이미 넣은 개체는 어떻게 할까요?'));
     for (const [v, l, d] of RESIZE_MODES) right.append(h('label', { class: 'radio rsz-opt' + (st.mode === v ? ' on' : '') }, h('input', { type: 'radio', name: 'rmode', checked: st.mode === v, onchange: () => { st.mode = v; draw(); } }), h('span', {}, h('b', {}, l), h('br'), h('span', { class: 'muted small' }, d))));
-    right.append(h('p', { class: 'hint' }, '모든 쪽과 바탕에 똑같이 적용돼요. 선 굵기는 그대로 두고(인쇄 선명도), 글자 크기는 개체와 같은 비율로 바뀌어요. 양식(밖에서 만든 노트 양식)은 맞춤 설정대로 새 크기에 다시 맞춰져요. 마음에 안 들면 “되돌리기”로 돌아갈 수 있어요.'));
+    right.append(h('p', { class: 'info' }, `안전영역 자동 조정 ${previewReport.changed.length}개 · 고정/제외 ${previewReport.excluded.length}개 · 확인 필요 ${previewReport.warnings.length}개`));
+    for(const x of previewReport.invalid)right.append(h('p',{class:'info warn'},x));
+    for(const x of previewReport.warnings.slice(0,8))right.append(h('p',{class:'info warn'},'⚠ '+x));
+    right.append(h('p', { class: 'hint' }, '모든 쪽과 바탕을 검사합니다. 선 굵기는 인쇄 선명도를 위해 유지하고, 표 셀 내용과 이미지 자르기 정보는 보존합니다. 파란 점선은 사용 가능 영역, 빨간 점선은 침범 개체, 초록 점선은 자동 조정 개체입니다. 적용 전 원본은 “내 노트”에 보관됩니다.'));
     card.append(h('div', { class: 'card-foot' }, h('p', { class: 'muted small' }, `미리보기: ${ui.pageIdx + 1}쪽`), btn('적용', () => {
+      if(previewReport.invalid.length)return toast('안전 영역 설정이 유효하지 않아 적용하지 않았어요');
+      if(!saveLayoutVersion(doc))return toast('원본을 보존할 저장 공간이 부족해요. 먼저 파일로 내보내 주세요');
       lastResizeMode = st.mode;
-      mutate(() => resizeDoc(doc, st.w, st.h, st.mode));
+      mutate(() => { doc=after; });
       modal.remove(); zoom = 1; els.clear(); renderAll(); toast(`용지를 ${st.w}×${st.h}mm로 바꿨어요 (되돌리기 가능)`);
-    }, { class: 'primary big' })));
+    }, { class: 'primary big', disabled: !!previewReport.invalid.length })));
   }
   draw();
   document.body.append(modal);
