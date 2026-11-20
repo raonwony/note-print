@@ -262,5 +262,50 @@
     for (let i = Math.ceil((ay0 - oy) / s - 1e-9); i <= Math.floor((ay1 - oy) / s + 1e-9); i++) ys.push(r3(oy + i * s));
     return { xs, ys, ox, oy, ax0, ax1, ay0, ay1 };
   };
+  /* ---------- 양식(밖에서 만든 노트 양식 그림) 배치 — 화면·집 인쇄·PDF가 같이 씀 ----------
+     bg = { src, nw, nh, name, fit: contain(전체 맞춤)|cover(꽉 채우기)|stretch(가로·세로 각각), mg:{t,r,b,l}(여백 mm), dx, dy(이동 mm) }
+     기본은 재단 크기(빼기 여백)에 맞추고, toBleed면 여백 0인 쪽을 도련 끝 기준으로 맞춰요. 넘친 부분은 여백 0인 쪽이면 도련까지 보여요. 결과는 잘라낸 값(cl…)이 붙은 사진 개체예요. */
+  NP.bgFit = (bg, W, H, bleed) => {
+    const M = bg.mg || {}, t = +M.t || 0, r = +M.r || 0, b = +M.b || 0, l = +M.l || 0, ext = !!bg.toBleed; // 도련까지 채우기: 여백 0인 쪽은 도련 끝을 기준으로 맞춤
+    const fx0 = l > 0 || !ext ? l : -bleed, fy0 = t > 0 || !ext ? t : -bleed, fx1 = r > 0 || !ext ? W - r : W + bleed, fy1 = b > 0 || !ext ? H - b : H + bleed;
+    const fw = fx1 - fx0, fh = fy1 - fy0;
+    if (fw <= 0 || fh <= 0) return null;
+    let w, h;
+    if (bg.fit === 'stretch') { w = fw; h = fh; } else { const k = (bg.fit === 'cover' ? Math.max : Math.min)(fw / bg.nw, fh / bg.nh); w = bg.nw * k; h = bg.nh * k; }
+    const x = fx0 + (fw - w) / 2 + (+bg.dx || 0), y = fy0 + (fh - h) / 2 + (+bg.dy || 0);
+    const clipBox = { x0: l > 0 ? l : -bleed, y0: t > 0 ? t : -bleed, x1: r > 0 ? W - r : W + bleed, y1: b > 0 ? H - b : H + bleed };
+    return { x, y, w, h, clip: clipBox };
+  };
+  NP.bgItem = (bg, W, H, bleed) => {
+    if (!bg || !bg.src || !(bg.nw > 0 && bg.nh > 0)) return null;
+    const f = NP.bgFit(bg, W, H, bleed); if (!f) return null;
+    const c = f.clip, vx0 = Math.max(f.x, c.x0), vy0 = Math.max(f.y, c.y0), vx1 = Math.min(f.x + f.w, c.x1), vy1 = Math.min(f.y + f.h, c.y1);
+    if (vx1 - vx0 < 0.01 || vy1 - vy0 < 0.01) return null;
+    return { type: 'image', id: -2, x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0, src: bg.src, nw: bg.nw, nh: bg.nh, name: bg.name || '양식',
+      cl: (vx0 - f.x) / f.w, ct: (vy0 - f.y) / f.h, cr: (f.x + f.w - vx1) / f.w, cb: (f.y + f.h - vy1) / f.h,
+      rot: 0, gray: !!bg.gray, hide: false, lock: true, gid: null, color: 'k100', ar: false };
+  };
+  /* ---------- 용지 크기를 바꿀 때 개체 옮기기·크기 바꾸기 ----------
+     X' = X·ax + ox, Y' = Y·ay + oy. 가로·세로 배율이 다를 때 돌린 개체·비율 고정 개체·사진은 찌그러지지 않게
+     가운데 자리만 옮기고 크기는 작은 쪽 배율로 바꿔요. 선 굵기는 그대로(인쇄 선명도), 글자 크기는 작은 쪽 배율. */
+  NP.mapItem = (it, ax, ay, ox, oy) => {
+    const r = v => Math.round(v * 100) / 100, k = Math.min(ax, ay), X = v => r(v * ax + ox), Y = v => r(v * ay + oy);
+    const scalePt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v * k * 10) / 10));
+    if (it.type === 'line') { it.x1 = X(it.x1); it.x2 = X(it.x2); it.y1 = Y(it.y1); it.y2 = Y(it.y2); return it; }
+    const uni = Math.abs(ax - ay) > 1e-6 && (it.rot || it.ar || it.type === 'image');
+    const fx = uni ? k : ax, fy = uni ? k : ay;
+    const h0 = it.type === 'text' ? (it._h || 0) : it.h;
+    if (uni) { const cx = it.x + it.w / 2, cy = it.y + h0 / 2; it.w = r(it.w * k); if (it.type !== 'text') it.h = r(it.h * k); it.x = r(X(cx) - it.w / 2); it.y = r(Y(cy) - (it.type === 'text' ? h0 * k : it.h) / 2); }
+    else { it.x = X(it.x); it.y = Y(it.y); it.w = r(it.w * fx); if (it.type !== 'text' && it.type !== 'table') it.h = r(it.h * fy); }
+    delete it._h;
+    if (it.type === 'text') { it.pt = scalePt(it.pt, 2, 200); for (const sp of it.spans || []) if (sp.pt) sp.pt = scalePt(sp.pt, 2, 200); }
+    if (it.type === 'shape' && it.r) it.r = r(it.r * Math.min(fx, fy));
+    if (it.type === 'table') {
+      it.cw = it.cw.map(v => Math.max(2, r(v * fx))); it.rh = it.rh.map(v => Math.max(2, r(v * fy)));
+      it.w = r(it.cw.reduce((a, b) => a + b, 0)); it.h = r(it.rh.reduce((a, b) => a + b, 0));
+      for (const c of Object.values(it.cells || {})) if (c.pt) c.pt = scalePt(c.pt, 2, 80);
+    }
+    return it;
+  };
   NP.GUIDE_COLORS = [['#14b8d4', '하늘'], ['#2563eb', '파랑'], ['#16a34a', '초록'], ['#f59e0b', '주황'], ['#9333ea', '보라'], ['#e11d48', '분홍']];
 })();

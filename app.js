@@ -10,7 +10,8 @@ const PRESETS = [
   { id: 'a4', name: 'A4', w: 210, h: 297 }, { id: 'a5', name: 'A5', w: 148, h: 210 },
   { id: 'a6', name: 'A6', w: 105, h: 148 }, { id: 'a6s', name: 'A6 슬림', w: 85, h: 148 }, { id: 'a7', name: 'A7', w: 74, h: 105 },
   { id: 'b5', name: 'B5', w: 176, h: 250 }, { id: 'b6', name: 'B6', w: 128, h: 182 }, { id: 'b6s', name: 'B6 슬림', w: 106, h: 182 }, { id: 'b7', name: 'B7', w: 91, h: 128 },
-  { id: 'bible', name: '바이블 (6공)', w: 95, h: 171 }, { id: 'm5', name: 'M5 마이크로5 (5공)', w: 68, h: 105 },
+  { id: 'bible', name: '바이블·Personal (6공)', w: 95, h: 171 }, { id: 'm5', name: 'M5 마이크로5 (5공)', w: 68, h: 105 },
+  { id: 'pocket', name: '포켓 Pocket (6공)', w: 81, h: 120 },
 ];
 // 새 파일 만들 때 보여주는 크기 (슬림은 임시값 — 나중에 실물에 맞춰 고치기)
 const SIZE_SETS = {
@@ -169,13 +170,14 @@ function normalize(s) {
   };
   const gcolors = NP.GUIDE_COLORS.map(x => x[0]);
   const guides = arr => (Array.isArray(arr) ? arr : []).filter(g => g && (g.axis === 'x' || g.axis === 'y') && Number.isFinite(+g.pos)).map((g, i) => ({ id: String(g.id || 'g' + i + Math.random().toString(36).slice(2, 6)), axis: g.axis, pos: +g.pos, ...(gcolors.includes(g.color) ? { color: g.color } : {}), ...(g.lock ? { lock: true } : {}), ...(typeof g.gid === 'string' && g.gid ? { gid: g.gid } : {}) }));
+  const bgN = q => (q && typeof q.src === 'string' && q.src && +q.nw > 0 && +q.nh > 0 ? { src: q.src, nw: +q.nw, nh: +q.nh, name: String(q.name || '양식'), fit: ['contain', 'cover', 'stretch'].includes(q.fit) ? q.fit : 'contain', mg: { t: clamp(+(q.mg || {}).t || 0, 0, 100), r: clamp(+(q.mg || {}).r || 0, 0, 100), b: clamp(+(q.mg || {}).b || 0, 0, 100), l: clamp(+(q.mg || {}).l || 0, 0, 100) }, dx: clamp(+q.dx || 0, -200, 200), dy: clamp(+q.dy || 0, -200, 200), ...(q.toBleed ? { toBleed: true } : {}), ...(q.gray ? { gray: true } : {}) } : null);
   const mids = new Set();
   for (const m of src.masters || []) {
     if (!m) continue;
     let id = typeof m.id === 'string' && !mids.has(m.id) ? m.id : 'm' + (mids.size + 100);
     mids.add(id);
     const g = m.grid || {};
-    o.masters.push({ id, name: String(m.name || '바탕'), grid: { type: ['square', 'dot', 'line', 'none'].includes(g.type) ? g.type : 'square', size: clamp(+g.size || 5, 2, 30), tone: clamp(+g.tone || 35, 5, 100), color: mc(g.color || 'k100'), lw: clamp(+g.lw || 0.15, 0.05, 1), dot: clamp(+g.dot || 0.6, 0.2, 3), inset: { l: clamp(+(g.inset || {}).l || 0, 0, 60), t: clamp(+(g.inset || {}).t || 0, 0, 60), r: clamp(+(g.inset || {}).r || 0, 0, 60), b: clamp(+(g.inset || {}).b || 0, 0, 60) }, start: ['corner', 'cornerR'].includes(g.start) ? g.start : 'center', dx: clamp(+g.dx || 0, -60, 60), dy: clamp(+g.dy || 0, -60, 60) }, guides: guides(m.guides), items: items(m.items) });
+    o.masters.push({ id, name: String(m.name || '바탕'), grid: { type: ['square', 'dot', 'line', 'none'].includes(g.type) ? g.type : 'square', size: clamp(+g.size || 5, 2, 30), tone: clamp(+g.tone || 35, 5, 100), color: mc(g.color || 'k100'), lw: clamp(+g.lw || 0.15, 0.05, 1), dot: clamp(+g.dot || 0.6, 0.2, 3), inset: { l: clamp(+(g.inset || {}).l || 0, 0, 60), t: clamp(+(g.inset || {}).t || 0, 0, 60), r: clamp(+(g.inset || {}).r || 0, 0, 60), b: clamp(+(g.inset || {}).b || 0, 0, 60) }, start: ['corner', 'cornerR'].includes(g.start) ? g.start : 'center', dx: clamp(+g.dx || 0, -60, 60), dy: clamp(+g.dy || 0, -60, 60) }, guides: guides(m.guides), items: items(m.items), ...(bgN(m.bg) ? { bg: bgN(m.bg) } : {}) });
   }
   const pids = new Set();
   for (const p of src.pages || []) {
@@ -183,7 +185,7 @@ function normalize(s) {
     let id = typeof p.id === 'string' && !pids.has(p.id) ? p.id : 'p' + (pids.size + 100);
     pids.add(id);
     const pnum = p.num && typeof p.num === 'object' ? { ...(p.num.off ? { off: true } : {}), ...(p.num.h === 'outer' || p.num.h === 'center' ? { h: p.num.h } : {}), ...(p.num.v === 'top' || p.num.v === 'bottom' ? { v: p.num.v } : {}) } : null;
-    o.pages.push({ id, master: o.masters.some(m => m.id === p.master) ? p.master : null, guides: guides(p.guides), items: items(p.items), ...(pnum && Object.keys(pnum).length ? { num: pnum } : {}) });
+    o.pages.push({ id, master: o.masters.some(m => m.id === p.master) ? p.master : null, guides: guides(p.guides), items: items(p.items), ...(pnum && Object.keys(pnum).length ? { num: pnum } : {}), ...(bgN(p.bg) ? { bg: bgN(p.bg) } : {}) });
   }
   if (!o.pages.length) o.pages.push({ id: 'p1', master: o.masters[0] ? o.masters[0].id : null, guides: [], items: [] });
   o.guideSets = (Array.isArray(src.guideSets) ? src.guideSets : []).slice(0, 30).map((q, i) => ({ id: String((q && q.id) || 'S' + i), name: String((q && q.name) || '가이드 묶음'), guides: guides(q && q.guides).map(({ axis, pos, color }) => ({ axis, pos, ...(color ? { color } : {}) })) })).filter(q => q.guides.length);
@@ -500,10 +502,17 @@ function syncItemEl(el, it, pageNo, gs) {
     if (it.type === 'table') renderTableCells(el, it, pageNo);
   }
 }
+/* 양식(밖에서 만든 노트 양식 그림): 바탕의 양식 → 쪽의 양식 순서로 맨 아래에 깔림. 고르거나 옮길 수 없음 */
+function bgEls(list, bleed, pageNo) {
+  const out = [];
+  for (const bg of list) { const bi = NP.bgItem(bg, doc.page.w, doc.page.h, bleed); if (bi) { const el = makeItemEl(bi, false, pageNo, 5); el.classList.add('formbg'); out.push(el); } }
+  return out;
+}
 /* 한 쪽을 그대로 그린 요소 (썸네일·집 인쇄 미리보기용) */
 function buildPageDOM(page, pageNo, o = {}) {
   const m = masterById(page.master), gs = m ? m.grid.size : 5;
   const root = h('div', { class: 'pgv' });
+  root.append(...bgEls([m && m.bg, page.bg], 0, pageNo));
   if (m && o.grid !== false) root.append(gridSVG(m, 0));
   if (m) for (const it of m.items) if (!it.hide) root.append(makeItemEl(it, false, pageNo, gs));
   for (const it of page.items) if (!it.hide) root.append(makeItemEl(it, false, pageNo, gs));
@@ -530,8 +539,9 @@ function applyView() {
 function renderBackdrop() {
   layerM.textContent = '';
   const pageNo = ui.pageIdx + 1;
-  if (ui.editMaster) { const m = ctxMaster(); if (m) layerM.append(gridSVG(m, doc.bleed)); return; }
+  if (ui.editMaster) { const m = ctxMaster(); if (m) layerM.append(...bgEls([m.bg], doc.bleed, pageNo), gridSVG(m, doc.bleed)); return; }
   const m = masterById(curPage().master);
+  layerM.append(...bgEls([m && m.bg, curPage().bg], doc.bleed, pageNo));
   if (m) { layerM.append(gridSVG(m, doc.bleed)); for (const it of m.items) if (!it.hide) layerM.append(makeItemEl(it, false, pageNo, m.grid.size)); }
   const ni = NP.pageNumItem(doc, ui.pageIdx); if (ni) layerM.append(makeItemEl(ni, false, pageNo, m ? m.grid.size : 5));
 }
@@ -1528,9 +1538,9 @@ function renderPaperBox() {
   b.append(row('크기', h('select', { onchange: e => {
     const p = all.find(x => x.id === e.target.value); if (!p) return;
     const land = doc.page.w > doc.page.h, lo = Math.min(p.w, p.h), hi = Math.max(p.w, p.h);
-    mutate(() => { doc.page.w = land ? hi : lo; doc.page.h = land ? lo : hi; }); zoom = 1; renderAll();
+    requestResize(land ? hi : lo, land ? lo : hi);
   } }, all.map(p => h('option', { value: p.id, selected: cur && cur.id === p.id }, `${p.name}  (${p.w}×${p.h})`)), h('option', { value: 'custom', selected: !cur }, '직접 입력'))));
-  const setSize = (nw, nh) => { mutate(() => { doc.page.w = clamp(nw, 20, 500); doc.page.h = clamp(nh, 20, 500); }); zoom = 1; renderAll(); };
+  const setSize = (nw, nh) => requestResize(clamp(nw, 20, 500), clamp(nh, 20, 500));
   b.append(row('가로 × 세로', stepper(w, { min: 20, max: 500, step: 1 }, v => setSize(v, doc.page.h)), h('span', { class: 'unit' }, '×'),
     stepper(ph, { min: 20, max: 500, step: 1 }, v => setSize(doc.page.w, v)), h('span', { class: 'unit' }, 'mm')));
   b.append(row('', btn('↻ 가로·세로 바꾸기', () => setSize(doc.page.h, doc.page.w)),
@@ -1556,6 +1566,7 @@ function renderPaperBox() {
 function renderMasterBox() {
   const b = $('#masterBox'); b.textContent = '';
   const m = ctxMaster(), pg = curPage();
+  formSection(b);
   if (!ui.editMaster) {
     b.append(row('이 쪽의 바탕', h('select', { onchange: e => { mutate(() => { pg.master = e.target.value || null; }); renderStage(); renderPanels(); } },
       h('option', { value: '', selected: !pg.master }, '없음 (흰 종이)'), doc.masters.map(x => h('option', { value: x.id, selected: pg.master === x.id }, x.name)))));
@@ -2379,7 +2390,7 @@ const allItems = d => [...d.masters.flatMap(m => m.items), ...d.pages.flatMap(p 
 const blobToDataURL = b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
 $('#exportBtn').onclick = async () => {
   const images = {};
-  for (const id of new Set(allItems(doc).filter(i => i.type === 'image').map(i => i.src))) { const b = await idbGet(id).catch(() => null); if (b) images[id] = { type: b.type, data: await blobToDataURL(b) }; }
+  for (const id of new Set([...allItems(doc).filter(i => i.type === 'image').map(i => i.src), ...[...doc.masters, ...doc.pages].filter(q => q.bg).map(q => q.bg.src)])) { const b = await idbGet(id).catch(() => null); if (b) images[id] = { type: b.type, data: await blobToDataURL(b) }; }
   const blob = new Blob([JSON.stringify({ noteprint: 4, doc, images })], { type: 'application/json' });
   const a = h('a', { href: URL.createObjectURL(blob), download: `노트인쇄-${doc.page.w}x${doc.page.h}.json` });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); markBackup(); toast('파일로 내보냈어요');
@@ -2407,7 +2418,9 @@ $('#newBtn').onclick = () => {
 document.querySelectorAll('[data-add]').forEach(b => { b.onclick = () => addItem(b.dataset.add); });
 $('#imgFile').onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) await importImageFiles(fs); else imgReplaceId = null; };
 scroller.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
-scroller.addEventListener('drop', e => { const fs = [...(e.dataTransfer ? e.dataTransfer.files : [])].filter(f => /^image\//.test(f.type)); if (!fs.length) return; e.preventDefault(); imgReplaceId = null; importImageFiles(fs); });
+scroller.addEventListener('drop', e => { const fs = [...(e.dataTransfer ? e.dataTransfer.files : [])].filter(f => /^image\//.test(f.type) || isFormFile(f)); if (!fs.length) return; e.preventDefault(); if (fs.some(f => !isRaster(f))) importFormFiles(fs); else askDropKind(fs); }); // SVG·PDF는 양식으로만
+$('#formBtn').onclick = () => $('#formFile').click();
+$('#formFile').onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) await importFormFiles(fs); };
 function updateToggles() {
   $('#tgRuler').classList.toggle('on', ui.rulers); $('#tgGuides').classList.toggle('on', ui.userGuides);
   $('#tgSmart').classList.toggle('on', ui.smart); $('#tgGrid').classList.toggle('on', doc.snap);
@@ -2465,6 +2478,292 @@ function renderHoleBox() {
   b.append(h('div', { class: 'holegaps' }, hl.gaps.map((g, i) => h('input', { type: 'number', step: 0.5, min: 3, max: 120, value: g, 'aria-label': `${i + 1}번째 간격`, onchange: e => { const v = clamp(+e.target.value || 19, 3, 120); mutate(() => { hl.gaps[i] = v; hl.preset = 'custom'; }, 'hgap'); renderGuides(); } })),
     btn('＋ 구멍', () => { if (hl.gaps.length >= 11) return; mutate(() => { hl.gaps.push(19); hl.preset = 'custom'; }); after(); }), btn('－ 구멍', () => { if (hl.gaps.length <= 1) return; mutate(() => { hl.gaps.pop(); hl.preset = 'custom'; }); after(); })));
   b.append(h('p', { class: 'hint' + (hl.est ? ' warnc' : '') }, (hl.est ? '※ 가장자리 거리와 지름은 자료로 확정하지 못한 추정값이에요. 가지고 계신 속지를 재서 고쳐 주세요(고치면 이 표시가 사라져요). ' : '') + '구멍은 종이 세로 가운데를 기준으로 위아래 대칭이에요. 홀수 쪽은 왼쪽, 짝수 쪽은 오른쪽에 그려져요.'));
+}
+
+/* ---------- 용지 크기 바꾸기 (개체도 같이 맞추기) ---------- */
+const RESIZE_MODES = [
+  ['fit', '① 비율 유지 · 가운데 배치', '노트 전체를 같은 비율로 줄이거나 키워서 새 쪽 가운데에 놓아요. 모양이 그대로예요.'],
+  ['content', '② 개체를 새 쪽에 꽉 맞추기', '쪽마다 개체 전체를 묶어서, 새 쪽의 안전선 안에 들어가게 같은 비율로 크기를 바꿔요.'],
+  ['stretch', '③ 가로·세로 각각 맞추기', '가로는 가로 배율, 세로는 세로 배율로 바꿔요. 표·네모는 쪽 모양에 딱 맞고, 사진·돌린 개체·비율 고정 개체는 찌그러지지 않게 둬요.'],
+  ['move', '④ 크기는 그대로 · 위치만 옮기기', '개체(묶음은 묶음째) 크기는 두고, 쪽에서의 상대 위치만 새 쪽에 맞춰 옮겨요.'],
+  ['none', '⑤ 치수만 바꾸기 (예전 방식)', '개체는 그 자리 그대로 둬요. 쪽이 작아지면 밖으로 나갈 수 있어요.'],
+];
+let lastResizeMode = 'fit';
+const docHasContent = d => d.pages.some(p => p.items.length || p.guides.length) || d.masters.some(m => m.items.length || m.guides.length);
+function resizeDoc(d, nw, nh, mode) { // d를 직접 바꿔요 (미리보기는 복사본에, 적용은 진짜 문서에)
+  const W = d.page.w, H = d.page.h, sx = nw / W, sy = nh / H;
+  d.page.w = nw; d.page.h = nh;
+  if (mode === 'none' || (sx === 1 && sy === 1)) return;
+  const tH = it => (it.type === 'text' ? textH(it) : 0);
+  const mapAll = (holder, ax, ay, ox, oy) => {
+    for (const it of holder.items) { if (it.type === 'text') it._h = tH(it); NP.mapItem(it, ax, ay, ox, oy); }
+    for (const g of holder.guides) g.pos = r2(g.axis === 'x' ? g.pos * ax + ox : g.pos * ay + oy);
+  };
+  const holders = [...d.masters, ...d.pages];
+  if (mode === 'fit') { const k = Math.min(sx, sy); for (const q of holders) mapAll(q, k, k, (nw - W * k) / 2, (nh - H * k) / 2); return; }
+  if (mode === 'stretch') { for (const q of holders) mapAll(q, sx, sy, 0, 0); return; }
+  if (mode === 'content') {
+    const sf = NP.safeOf(d), T = { x: sf.l, y: sf.t, w: nw - sf.l - sf.r, h: nh - sf.t - sf.b };
+    for (const q of holders) {
+      if (!q.items.length) { for (const g of q.guides) g.pos = r2(g.pos * (g.axis === 'x' ? sx : sy)); continue; }
+      const B = unionBox(q.items.map(bboxOf)), k = Math.min(T.w / Math.max(B.w, 0.1), T.h / Math.max(B.h, 0.1));
+      mapAll(q, k, k, T.x + (T.w - B.w * k) / 2 - B.x * k, T.y + (T.h - B.h * k) / 2 - B.y * k);
+    }
+    return;
+  }
+  if (mode === 'move') { // 묶음(gid)은 하나로 보고 가운데 자리만 옮김
+    for (const q of holders) {
+      const units = new Map();
+      for (const it of q.items) { const key = it.gid || 'i' + it.id; if (!units.has(key)) units.set(key, []); units.get(key).push(it); }
+      for (const list of units.values()) {
+        const B = unionBox(list.map(bboxOf)), cx = B.x + B.w / 2, cy = B.y + B.h / 2;
+        const dx = r2(cx * sx - cx), dy = r2(cy * sy - cy);
+        for (const it of list) moveItem(it, dx, dy);
+      }
+      for (const g of q.guides) g.pos = r2(g.pos * (g.axis === 'x' ? sx : sy));
+    }
+  }
+}
+function requestResize(nw, nh) {
+  if (nw === doc.page.w && nh === doc.page.h) return;
+  if (!docHasContent(doc)) { mutate(() => { doc.page.w = nw; doc.page.h = nh; }); zoom = 1; renderAll(); return; }
+  openResizeDialog(nw, nh);
+}
+function openResizeDialog(nw, nh) {
+  endEdit();
+  const st = { w: nw, h: nh, mode: lastResizeMode };
+  const modal = h('div', { class: 'modal', id: 'resizeModal' }), card = h('div', { class: 'card formcard' }); modal.append(card);
+  const close = () => { modal.remove(); renderPaperBox(); };
+  modal.addEventListener('pointerdown', e => { if (e.target === modal) close(); });
+  const thumb = (d, label) => { // d 문서로 지금 쪽을 그림 (잠깐 문서를 바꿔 끼워 그린 뒤 되돌림)
+    const saved = doc; doc = d;
+    try {
+      const { w, h: ph } = d.page, u = Math.min(230 / ph, 220 / w), pg = d.pages[ui.pageIdx];
+      return h('div', { class: 'rsz-one' }, h('div', { class: 'thumb rsz-th', style: `width:${w * u}px;height:${ph * u}px;--u:${u}px` }, buildPageDOM(pg, ui.pageIdx + 1)), h('div', { class: 'muted small' }, `${label} · ${w}×${ph}mm`));
+    } finally { doc = saved; }
+  };
+  function draw() {
+    card.textContent = '';
+    card.append(h('div', { class: 'card-head' }, h('h2', {}, '용지 크기 바꾸기'), btn('닫기 ✕', close, { class: 'ghost' })));
+    const after = JSON.parse(JSON.stringify(doc)); resizeDoc(after, st.w, st.h, st.mode);
+    const body = h('div', { class: 'formbody' }), left = h('div', { class: 'fleft rsz-pv' }), right = h('div', { class: 'fright' });
+    left.append(thumb(doc, '바꾸기 전'), h('div', { class: 'rsz-arrow' }, '→'), thumb(after, '바꾼 뒤'));
+    body.append(left, right); card.append(body);
+    right.append(row('새 크기', stepper(st.w, { min: 20, max: 500, step: 1 }, v => { st.w = v; draw(); }), h('span', { class: 'unit' }, '×'), stepper(st.h, { min: 20, max: 500, step: 1 }, v => { st.h = v; draw(); }), h('span', { class: 'unit' }, 'mm')));
+    right.append(h('div', { class: 'sub2' }, '이미 넣은 개체는 어떻게 할까요?'));
+    for (const [v, l, d] of RESIZE_MODES) right.append(h('label', { class: 'radio rsz-opt' + (st.mode === v ? ' on' : '') }, h('input', { type: 'radio', name: 'rmode', checked: st.mode === v, onchange: () => { st.mode = v; draw(); } }), h('span', {}, h('b', {}, l), h('br'), h('span', { class: 'muted small' }, d))));
+    right.append(h('p', { class: 'hint' }, '모든 쪽과 바탕에 똑같이 적용돼요. 선 굵기는 그대로 두고(인쇄 선명도), 글자 크기는 개체와 같은 비율로 바뀌어요. 양식(밖에서 만든 노트 양식)은 맞춤 설정대로 새 크기에 다시 맞춰져요. 마음에 안 들면 “되돌리기”로 돌아갈 수 있어요.'));
+    card.append(h('div', { class: 'card-foot' }, h('p', { class: 'muted small' }, `미리보기: ${ui.pageIdx + 1}쪽`), btn('적용', () => {
+      lastResizeMode = st.mode;
+      mutate(() => resizeDoc(doc, st.w, st.h, st.mode));
+      modal.remove(); zoom = 1; els.clear(); renderAll(); toast(`용지를 ${st.w}×${st.h}mm로 바꿨어요 (되돌리기 가능)`);
+    }, { class: 'primary big' })));
+  }
+  draw();
+  document.body.append(modal);
+}
+
+/* ---------- 양식 가져오기 (밖에서 만든 노트 양식 그림을 쪽/바탕 맨 아래에 깔기) ----------
+   “이미지”(노트 위에 올리는 그림 개체)와는 다른 기능이에요. 원본 파일은 사진과 같은 저장소(IndexedDB)에 그대로 보관하고,
+   배치는 맞춤 방식·여백·이동 값으로만 저장해서 용지 크기가 바뀌어도 다시 맞춰져요. */
+const FORM_FITS = [['contain', '비율 유지 · 전체 맞춤'], ['cover', '꽉 채우기 (넘치면 자름)'], ['stretch', '가로·세로 각각 맞춤']];
+const isRaster = f => /^image\/(png|jpe?g)$/i.test(f.type) || /\.(png|jpe?g)$/i.test(f.name);
+const isSvg = f => /svg/i.test(f.type) || /\.svg$/i.test(f.name), isPdf = f => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
+const isFormFile = f => isRaster(f) || isSvg(f) || isPdf(f);
+const canvasToPng = cv => new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('png'))), 'image/png'));
+async function svgToPng(file) { // SVG → 인쇄용 그림(긴 쪽 3508px = A4 300dpi). 이번에는 그림으로 바꿔 넣고, 선 하나하나 편집은 다음에
+  const txt = await file.text(), dom = new DOMParser().parseFromString(txt, 'image/svg+xml'), svg = dom.documentElement;
+  if (!svg || svg.nodeName.toLowerCase() !== 'svg') throw new Error('svg');
+  const num = v => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 && !/%$/.test(String(v).trim()) ? n : 0; };
+  const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  let w = num(svg.getAttribute('width')), hh = num(svg.getAttribute('height'));
+  if ((!w || !hh) && vb.length === 4 && vb[2] > 0 && vb[3] > 0) { if (w) hh = w * vb[3] / vb[2]; else if (hh) w = hh * vb[2] / vb[3]; else { w = vb[2]; hh = vb[3]; } }
+  if (!w || !hh) { w = 1000; hh = 1414; }
+  const k = 3508 / Math.max(w, hh), pw = Math.round(w * k), ph = Math.round(hh * k);
+  if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${hh}`);
+  svg.setAttribute('width', pw); svg.setAttribute('height', ph); svg.setAttribute('preserveAspectRatio', 'none');
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' })), img = new Image();
+  try { img.src = url; await img.decode(); } finally { URL.revokeObjectURL(url); }
+  const cv = document.createElement('canvas'); cv.width = pw; cv.height = ph;
+  cv.getContext('2d').drawImage(img, 0, 0, pw, ph);
+  return [{ blob: await canvasToPng(cv), name: file.name.replace(/\.svg$/i, '') + '.svg' }];
+}
+let pdfjsP = null;
+const loadPdfjs = () => pdfjsP || (pdfjsP = new Promise((res, rej) => {
+  if (window.pdfjsLib) return res(window.pdfjsLib);
+  const sc = document.createElement('script'); sc.src = 'lib/pdfjs.min.js';
+  sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdfjs.worker.min.js'; res(window.pdfjsLib); };
+  sc.onerror = () => { pdfjsP = null; rej(new Error('pdfjs')); }; document.head.append(sc);
+}));
+async function pdfToPngs(file) { // PDF 각 쪽 → 300dpi 그림 (PDF에 적힌 실제 크기 기준, 긴 쪽 최대 6000px)
+  const lib = await loadPdfjs();
+  const pdfDoc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise; // isEvalSupported:false = 글꼴 속 코드 실행 막기(보안)
+  const out = [], n = Math.min(pdfDoc.numPages, 60), base = file.name.replace(/\.pdf$/i, '');
+  if (pdfDoc.numPages > 60) toast('PDF는 앞 60쪽까지만 가져와요');
+  for (let i = 1; i <= n; i++) {
+    toast(`PDF ${i} / ${n}쪽 그림으로 바꾸는 중…`);
+    const pg = await pdfDoc.getPage(i), v1 = pg.getViewport({ scale: 1 });
+    const scale = Math.min(300 / 72, 6000 / Math.max(v1.width, v1.height)), vp = pg.getViewport({ scale });
+    const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+    await pg.render({ canvasContext: cx, viewport: vp }).promise;
+    out.push({ blob: await canvasToPng(cv), name: n > 1 ? `${base} ${i}쪽.pdf` : `${base}.pdf` });
+    cv.width = cv.height = 0; pg.cleanup();
+  }
+  pdfDoc.destroy();
+  return out;
+}
+function formDpi(bi) { if (!bi) return 0; return Math.round(Math.min(bi.nw * (1 - bi.cl - bi.cr) / (bi.w / 25.4), bi.nh * (1 - bi.ct - bi.cb) / (bi.h / 25.4))); }
+function formTargets() { // 지금 화면의 양식 자리: [이름, 담는 곳]
+  if (ui.editMaster) { const m = ctxMaster(); return m ? [['바탕 “' + m.name + '”', m]] : []; }
+  const pg = curPage(), m = masterById(pg.master), out = [[`${ui.pageIdx + 1}쪽`, pg]];
+  if (m && m.bg) out.push(['바탕 “' + m.name + '” (모든 쪽 공통)', m]);
+  return out;
+}
+function formSection(b) {
+  b.append(h('div', { class: 'sub2' }, '양식 (밖에서 만든 노트 양식 그림)'));
+  for (const [label, holder] of formTargets()) {
+    if (!holder.bg) continue;
+    b.append(row(label, h('span', { class: 'muted small' }, `${holder.bg.name} · ${FORM_FITS.find(f => f[0] === holder.bg.fit)[1]}`)));
+    b.append(h('div', { class: 'btnrow' }, btn('맞춤·여백 바꾸기', () => openFormDialog(null, holder)), btn('양식 빼기', () => { mutate(() => { delete holder.bg; }); renderBackdrop(); renderStrip(); renderPanels(); toast('양식을 뺐어요'); })));
+  }
+  b.append(h('div', { class: 'btnrow' }, btn('📄 양식 가져오기…', () => $('#formFile').click())));
+}
+function openFormDialog(files, editHolder) {
+  endEdit();
+  const pageW0 = doc.page.w, pageH0 = doc.page.h;
+  const st = editHolder
+    ? { list: [{ name: editHolder.bg.name, info: { nw: editHolder.bg.nw, nh: editHolder.bg.nh }, url: null, src: editHolder.bg.src }], cur: 0, size: 'keep', w: pageW0, h: pageH0, autoOrient: false, where: 'here', ...JSON.parse(JSON.stringify(editHolder.bg)) }
+    : { list: files, cur: 0, size: 'keep', w: pageW0, h: pageH0, autoOrient: true, where: 'here', fit: 'contain', mg: { t: 0, r: 0, b: 0, l: 0 }, dx: 0, dy: 0, toBleed: false };
+  if (editHolder) ensureImgUrl(editHolder.bg.src).then(u => { st.list[0].url = u; draw(); });
+  const presets = [...PRESETS, ...lsGet(LS.sizes, []).map(c => ({ id: 'u:' + c.name, name: c.name + ' ★', w: c.w, h: c.h }))];
+  const target = () => { // 가져온 뒤의 용지 크기
+    let w = st.w, hh = st.h;
+    if (st.size !== 'keep' && st.size !== 'custom') { const p = presets.find(x => x.id === st.size); if (p) { const land = pageW0 > pageH0; w = land ? Math.max(p.w, p.h) : Math.min(p.w, p.h); hh = land ? Math.min(p.w, p.h) : Math.max(p.w, p.h); } }
+    if (st.size === 'keep') { w = pageW0; hh = pageH0; }
+    const f0 = st.list[0];
+    if (st.autoOrient && f0 && f0.info.nw !== f0.info.nh && (f0.info.nw > f0.info.nh) !== (w > hh)) [w, hh] = [hh, w];
+    return { w, h: hh };
+  };
+  const bgOf = f => ({ src: f.src || 'preview', nw: f.info.nw, nh: f.info.nh, name: f.name, fit: st.fit, mg: { ...st.mg }, dx: st.dx, dy: st.dy, ...(st.toBleed ? { toBleed: true } : {}) });
+  const modal = h('div', { class: 'modal', id: 'formModal' }), card = h('div', { class: 'card formcard' });
+  modal.append(card);
+  const close = () => modal.remove();
+  modal.addEventListener('pointerdown', e => { if (e.target === modal) close(); });
+  function preview() {
+    const T = target(), bl = doc.bleed, f = st.list[st.cur], bg = bgOf(f), fit = NP.bgFit(bg, T.w, T.h, bl), bi = NP.bgItem(bg, T.w, T.h, bl);
+    const TW = T.w + 2 * bl, TH = T.h + 2 * bl, k = Math.min(300 / TW, 340 / TH), P = v => (v * k).toFixed(2) + 'px';
+    const box = h('div', { class: 'fpv', style: `width:${P(TW)};height:${P(TH)}` });
+    box.append(h('div', { class: 'fpv-bleed' }), h('div', { class: 'fpv-page', style: `left:${P(bl)};top:${P(bl)};width:${P(T.w)};height:${P(T.h)}` }));
+    if (fit && f.url) {
+      box.append(h('img', { class: 'fpv-ghost', src: f.url, style: `left:${P(fit.x + bl)};top:${P(fit.y + bl)};width:${P(fit.w)};height:${P(fit.h)}` })); // 잘려 나가는 부분(흐리게)
+      if (bi) { const wrap = h('div', { class: 'fpv-clip', style: `left:${P(bi.x + bl)};top:${P(bi.y + bl)};width:${P(bi.w)};height:${P(bi.h)}` }); wrap.append(h('img', { src: f.url, style: `left:${P(fit.x - bi.x)};top:${P(fit.y - bi.y)};width:${P(fit.w)};height:${P(fit.h)}` })); box.append(wrap); }
+    }
+    const sf = NP.safeOf(doc), m = st.mg;
+    box.append(h('div', { class: 'fpv-trim', style: `left:${P(bl)};top:${P(bl)};width:${P(T.w)};height:${P(T.h)}` }));
+    if (m.t + m.r + m.b + m.l > 0) box.append(h('div', { class: 'fpv-mg', style: `left:${P(bl + m.l)};top:${P(bl + m.t)};width:${P(T.w - m.l - m.r)};height:${P(T.h - m.t - m.b)}` }));
+    box.append(h('div', { class: 'fpv-safe', style: `left:${P(bl + sf.l)};top:${P(bl + sf.t)};width:${P(T.w - sf.l - sf.r)};height:${P(T.h - sf.t - sf.b)}` }));
+    if (!f.url) box.append(h('div', { class: 'fpv-wait' }, '불러오는 중…'));
+    const dpi = formDpi(bi);
+    const info = h('p', { class: 'hint' + (dpi && dpi < 200 ? ' warnhint' : '') }, `${T.w} × ${T.h} mm · 그림 ${f.info.nw}×${f.info.nh}px · 인쇄 해상도 약 ${dpi}dpi ` + (dpi >= 300 ? '(충분해요)' : dpi >= 200 ? '(괜찮아요, 300dpi면 더 선명)' : '(흐리게 나올 수 있어요)'));
+    return h('div', { class: 'fpv-wrap' }, box, info, h('p', { class: 'muted small' }, '흰 면 = 노트(재단 크기) · 빗금 = 도련 · 파란 점선 = 안전선 · 흐린 부분 = 잘려 나가는 곳'));
+  }
+  function draw() {
+    card.textContent = '';
+    card.append(h('div', { class: 'card-head' }, h('h2', {}, editHolder ? '양식 맞춤 바꾸기' : `양식 가져오기 (${st.list.length}장)`), btn('닫기 ✕', close, { class: 'ghost' })));
+    const body = h('div', { class: 'formbody' }), left = h('div', { class: 'fleft' }), right = h('div', { class: 'fright' });
+    body.append(left, right); card.append(body);
+    left.append(preview());
+    if (st.list.length > 1) left.append(h('div', { class: 'fthumbs' }, st.list.map((f, i) => h('button', { type: 'button', class: 'fthumb' + (i === st.cur ? ' on' : ''), title: f.name, onclick: () => { st.cur = i; draw(); } }, f.url ? h('img', { src: f.url, alt: '' }) : String(i + 1)))));
+    if (!editHolder) {
+      right.append(h('div', { class: 'sub2' }, '용지 크기'));
+      right.append(row('크기', h('select', { onchange: e => { st.size = e.target.value; if (st.size === 'custom') { st.w = target().w; st.h = target().h; } draw(); } },
+        h('option', { value: 'keep', selected: st.size === 'keep' }, `지금 크기 그대로 (${pageW0}×${pageH0})`),
+        presets.map(p => h('option', { value: p.id, selected: st.size === p.id }, `${p.name}  (${p.w}×${p.h})`)),
+        h('option', { value: 'custom', selected: st.size === 'custom' }, '직접 입력'))));
+      if (st.size === 'custom') right.append(row('가로 × 세로', stepper(st.w, { min: 20, max: 500, step: 1 }, v => { st.w = v; draw(); }), h('span', { class: 'unit' }, '×'), stepper(st.h, { min: 20, max: 500, step: 1 }, v => { st.h = v; draw(); }), h('span', { class: 'unit' }, 'mm')));
+      right.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: st.autoOrient, onchange: e => { st.autoOrient = e.target.checked; draw(); } }), '그림이 가로형이면 용지도 가로로 (첫 장 기준)')));
+      const T = target(); if (T.w !== pageW0 || T.h !== pageH0) right.append(h('p', { class: 'hint warnhint' }, `노트 전체 크기가 ${pageW0}×${pageH0} → ${T.w}×${T.h}mm로 바뀌어요. 이미 넣은 개체는 자리·크기가 그대로예요.`));
+    }
+    right.append(h('div', { class: 'sub2' }, '맞춤 방식'));
+    right.append(h('div', { class: 'fitlist' }, FORM_FITS.map(([v, l]) => h('label', { class: 'radio' }, h('input', { type: 'radio', name: 'ffit', checked: st.fit === v, onchange: () => { st.fit = v; draw(); } }), l))));
+    if (st.fit === 'stretch') right.append(h('p', { class: 'hint warnhint' }, '그림의 원래 비율과 달라져서 글자·동그라미가 늘어나 보일 수 있어요.'));
+    right.append(h('div', { class: 'sub2' }, '여백 (노트 가장자리에서 안쪽, mm)'));
+    const setMg = (k, v) => { st.mg[k] = clamp(v, 0, 100); draw(); };
+    right.append(h('div', { class: 'numgrid' }, ...numField('위', st.mg.t, v => setMg('t', v)), ...numField('아래', st.mg.b, v => setMg('b', v)), ...numField('왼쪽', st.mg.l, v => setMg('l', v)), ...numField('오른쪽', st.mg.r, v => setMg('r', v))));
+    right.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: st.toBleed, onchange: e => { st.toBleed = e.target.checked; draw(); } }), '도련까지 채우기 (여백 0인 쪽은 빗금 끝까지 — 인쇄소용)')));
+    right.append(h('div', { class: 'sub2' }, '위치 조정 (mm)'));
+    right.append(h('div', { class: 'numgrid' }, ...numField('가로 이동', st.dx, v => { st.dx = clamp(v, -200, 200); draw(); }), ...numField('세로 이동', st.dy, v => { st.dy = clamp(v, -200, 200); draw(); })));
+    right.append(h('div', { class: 'btnrow' }, btn('가운데로', () => { st.dx = 0; st.dy = 0; draw(); })));
+    if (!editHolder) {
+      right.append(h('div', { class: 'sub2' }, '넣을 곳'));
+      const n = st.list.length;
+      const opts = [['here', n > 1 ? `${ui.editMaster ? '1' : ui.pageIdx + 1}쪽부터 차례로 (모자라면 쪽 추가)` : `지금 쪽(${ui.editMaster ? '바탕' : ui.pageIdx + 1 + '쪽'})에`], ['new', `새 쪽 ${n}개를 만들어서`], ['master', '바탕에 (그 바탕을 쓰는 모든 쪽에 똑같이)']];
+      right.append(h('div', { class: 'fitlist' }, opts.map(([v, l]) => h('label', { class: 'radio' }, h('input', { type: 'radio', name: 'fwhere', checked: st.where === v, onchange: () => { st.where = v; draw(); } }), l))));
+      if (st.where === 'master' && n > 1) right.append(h('p', { class: 'hint warnhint' }, '바탕에는 양식 한 장만 깔 수 있어요 — 지금 보고 있는 그림 한 장만 들어가요.'));
+      const pg = ui.editMaster ? null : curPage(), mm = ui.editMaster ? ctxMaster() : masterById(pg.master);
+      if (st.where === 'master' && !mm) right.append(h('p', { class: 'hint warnhint' }, '이 쪽은 바탕이 “없음”이라 바탕에 넣을 수 없어요. “쪽”으로 넣어 주세요.'));
+      if (st.where === 'here' && pg && pg.bg) right.append(h('p', { class: 'hint' }, '이 쪽에 이미 있는 양식은 새 양식으로 바뀌어요.'));
+    }
+    right.append(h('p', { class: 'hint' }, '양식은 맨 아래에 깔려서 고르거나 움직여지지 않아요. 그 위에 글자·선·표를 마음껏 올리세요. 나중에 “문서·쪽 → 바탕”에서 맞춤을 바꾸거나 뺄 수 있어요.'));
+    card.append(h('div', { class: 'card-foot' }, h('p', { class: 'muted small' }, '원본 그림은 화질 그대로 보관하고, 인쇄용 PDF를 만들 때 300dpi까지 인쇄용 색으로 바꿔 넣어요.'), btn(editHolder ? '적용' : '가져오기', apply, { class: 'primary big' })));
+  }
+  async function apply() {
+    const opt = { fit: st.fit, mg: { ...st.mg }, dx: st.dx, dy: st.dy, toBleed: st.toBleed };
+    const mk = f => { const o = { src: f.src, nw: f.info.nw, nh: f.info.nh, name: f.name, ...opt }; if (!o.toBleed) delete o.toBleed; if (editHolder && editHolder.bg.gray) o.gray = true; return o; };
+    if (editHolder) { mutate(() => { editHolder.bg = mk(st.list[0]); }); close(); renderBackdrop(); renderStrip(); renderPanels(); toast('양식 맞춤을 바꿨어요'); return; }
+    const T = target(), pg = ui.editMaster ? null : curPage(), mm = ui.editMaster ? ctxMaster() : masterById(pg.master);
+    if (st.where === 'master' && !mm) return toast('이 쪽은 바탕이 없어요 — “쪽”으로 넣어 주세요');
+    const use = st.where === 'master' ? [st.list[st.cur]] : st.list;
+    for (const f of use) {
+      f.src = newUid('img');
+      try { await idbPut(f.src, f.file); } catch (e) { return toast('그림을 저장하지 못했어요 (브라우저 저장 공간을 확인해 주세요)'); }
+    }
+    let goto = ui.pageIdx;
+    mutate(() => {
+      doc.page.w = T.w; doc.page.h = T.h;
+      if (st.where === 'master') { mm.bg = mk(use[0]); return; }
+      if (ui.editMaster) { mm.bg = mk(use[0]); return; }
+      const all = doc.pages.slice(), base = st.where === 'new' ? ui.pageIdx + 1 : ui.pageIdx;
+      if (st.where === 'new') { const made = use.map(() => { const np = { id: newId('p', all), master: pg.master, guides: [], items: [] }; all.push(np); return np; }); doc.pages.splice(base, 0, ...made); }
+      use.forEach((f, i) => {
+        let tp = doc.pages[base + i];
+        if (!tp) { tp = { id: newId('p', all), master: pg.master, guides: [], items: [] }; all.push(tp); doc.pages.push(tp); }
+        tp.bg = mk(f);
+      });
+      goto = base;
+    });
+    close();
+    for (const f of st.list) if (f.url) URL.revokeObjectURL(f.url);
+    if (!ui.editMaster) gotoPage(goto); else renderStage();
+    renderAll();
+    toast(st.where === 'master' ? '바탕에 양식을 깔았어요' : `양식 ${use.length}장을 넣었어요`);
+  }
+  draw();
+  document.body.append(modal);
+}
+async function importFormFiles(files) {
+  const ok = files.filter(isFormFile);
+  if (ok.length < files.length) toast('양식은 PNG·JPG·SVG·PDF만 가져올 수 있어요 (나머지는 빼고 진행)');
+  if (!ok.length) return;
+  const list = [];
+  for (const file of ok) {
+    try {
+      const parts = isRaster(file) ? [{ blob: file, name: file.name }] : isSvg(file) ? await svgToPng(file) : await pdfToPngs(file);
+      for (const p of parts) { const info = await readImageInfo(p.blob); list.push({ file: p.blob, name: p.name, info, url: URL.createObjectURL(p.blob) }); }
+    } catch (e) { toast(`“${file.name}”은 읽을 수 없어요`); }
+  }
+  if (list.length) openFormDialog(list, null);
+}
+function askDropKind(files) { // 화면에 그림을 끌어다 놓았을 때: 그림으로? 양식으로?
+  const modal = h('div', { class: 'modal' }), close = () => modal.remove();
+  modal.append(h('div', { class: 'card dropcard' },
+    h('div', { class: 'card-head' }, h('h2', {}, `그림 ${files.length}장을 어떻게 넣을까요?`), btn('닫기 ✕', close, { class: 'ghost' })),
+    h('div', { class: 'dropchoice' },
+      btn('🖼 그림으로 넣기\n(노트 위에 올려서 옮기고 크기 조절)', () => { close(); imgReplaceId = null; importImageFiles(files); }),
+      btn('📄 양식으로 가져오기\n(노트 양식 — 용지에 맞춰 맨 아래에 깔기)', () => { close(); importFormFiles(files); }, { class: 'primary' }))));
+  modal.addEventListener('pointerdown', e => { if (e.target === modal) close(); });
+  document.body.append(modal);
 }
 
 /* ---------- 새 파일 만들기 ---------- */

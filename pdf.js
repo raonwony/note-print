@@ -257,6 +257,7 @@
       page.setBleedBox((mg - b) * K, (mg - b) * K, (W + 2 * b) * K, (H + 2 * b) * K);
       page.setTrimBox(mg * K, mg * K, W * K, H * K);
       page.pushOperators(pushGraphicsState(), rectangle((mg - b) * K, (mg - b) * K, (W + 2 * b) * K, (H + 2 * b) * K), clip(), endPath());
+      for (const bgx of [m && m.bg, pg.bg]) { const bi = NP.bgItem(bgx, W, H, b); if (bi) await drawItem(page, bi, 5, pageNo); } // 양식(밖에서 만든 노트 양식) — 맨 아래
       const form = await gridForm(m);
       if (form) page.drawPage(form, { x: (mg - b) * K, y: (mg - b) * K, width: (W + 2 * b) * K, height: (H + 2 * b) * K });
       const gs = m ? m.grid.size : 5;

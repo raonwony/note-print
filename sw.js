@@ -1,7 +1,7 @@
 // 한 번 열어 두면 인터넷 없이도 열리게 파일을 저장해 두는 도우미입니다.
 // 글꼴 파일(fonts 폴더, 크기가 커요)은 처음 쓸 때 저장됩니다.
-const CACHE = 'noteprint-v24';
-const FILES = ['./', 'index.html', 'style.css', 'core.js', 'pdf.js', 'app.js', 'lib/pdf-lib.min.js', 'lib/fontkit.umd.min.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const CACHE = 'noteprint-v25';
+const FILES = ['./', 'index.html', 'style.css', 'core.js', 'pdf.js', 'app.js', 'lib/pdf-lib.min.js', 'lib/fontkit.umd.min.js', 'lib/pdfjs.min.js', 'lib/pdfjs.worker.min.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
