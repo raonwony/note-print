@@ -2404,6 +2404,7 @@ function renderMy() {
     list.append(h('li', {},
       h('span', { class: 'nm' }, h('b', {}, n), h('span', { class: 'muted small' }, `${st.page.w}×${st.page.h}mm · ${st.pages.length}쪽 · ${new Date(s.t).toLocaleDateString('ko-KR')}`)),
       btn('불러오기', () => { loadDoc(s.state); closeModal('#myModal'); toast(`“${n}”을(를) 불러왔어요`); }),
+      btn('뒤에 붙이기', () => { endEdit(true); appendDocs([{ name: n, state: s.state }]); closeModal('#myModal'); }, { title: '이 노트의 쪽들을 지금 노트 맨 뒤에 이어 붙여요' }),
       btn('지우기', () => { if (!confirm(`“${n}”을(를) 지울까요?`)) return; delete saved[n]; lsSet(LS.saved, saved); renderMy(); })));
   }
 }
@@ -2427,15 +2428,49 @@ $('#exportBtn').onclick = async () => {
   const a = h('a', { href: URL.createObjectURL(blob), download: `노트인쇄-${doc.page.w}x${doc.page.h}.json` });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); markBackup(); toast('파일로 내보냈어요');
 };
+async function readNoteFile(f) { // 노트 파일(.json)을 읽어 문서를 돌려줘요. 안에 든 그림은 이 기기에 저장해요
+  const j = JSON.parse(await f.text());
+  if (j && j.noteprint && j.doc) { for (const [id, v] of Object.entries(j.images || {})) { const blob = await (await fetch(v.data)).blob(); await idbPut(id, blob); imgUrls.delete(id); } return j.doc; }
+  return j;
+}
 $('#importBtn').onclick = () => $('#importFile').click();
 $('#importFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try {
-    const j = JSON.parse(await f.text());
-    if (j && j.noteprint && j.doc) { for (const [id, v] of Object.entries(j.images || {})) { const blob = await (await fetch(v.data)).blob(); await idbPut(id, blob); imgUrls.delete(id); } loadDoc(j.doc); }
-    else loadDoc(j);
-    closeModal('#myModal'); toast('파일에서 불러왔어요');
-  } catch (err) { toast('이 파일은 읽을 수 없어요'); }
+  try { loadDoc(await readNoteFile(f)); closeModal('#myModal'); toast('파일에서 불러왔어요'); } catch (err) { toast('이 파일은 읽을 수 없어요'); }
+};
+// 다른 노트의 쪽들을 지금 노트 맨 뒤에 이어 붙여요 (A 양식 + B 양식 …). 바탕·내 색도 같이 가져오고, 번호가 겹치지 않게 새로 매겨요
+function appendDocs(list) { // list: [{ name, state }]
+  let pagesAdded = 0; const diffSize = [];
+  mutate(() => {
+    for (const { name, state } of list) {
+      const src = normalize(state);
+      if (Math.abs(src.page.w - doc.page.w) > 0.05 || Math.abs(src.page.h - doc.page.h) > 0.05) diffSize.push(`${name}(${src.page.w}×${src.page.h})`);
+      for (const c of src.colors) if (!doc.colors.some(x => x.id === c.id)) doc.colors.push(JSON.parse(JSON.stringify(c)));
+      let nid = nextItemId();
+      const gmap = new Map(), reId = items => { for (const it of items) { it.id = nid++; if (it.gid) { if (!gmap.has(it.gid)) gmap.set(it.gid, newUid('G')); it.gid = gmap.get(it.gid); } } };
+      const sig = m => JSON.stringify({ grid: m.grid, bg: m.bg || null, guides: m.guides.map(({ axis, pos, color }) => [axis, pos, color]), items: m.items.map(it => ({ ...it, id: 0, gid: it.gid ? 1 : null })) });
+      const mmap = new Map();
+      for (const m of src.masters) {
+        const same = doc.masters.find(x => sig(x) === sig(m)); // 똑같은 바탕이 이미 있으면 그걸 같이 써요
+        if (same) { mmap.set(m.id, same.id); continue; }
+        const nm = { ...m, id: newId('m', doc.masters), name: doc.masters.some(x => x.name === m.name) ? `${m.name} (${name})` : m.name };
+        reId(nm.items); doc.masters.push(nm); mmap.set(m.id, nm.id);
+      }
+      for (const p of src.pages) {
+        const np = { ...p, id: newId('p', doc.pages), master: mmap.get(p.master) || p.master };
+        reId(np.items); doc.pages.push(np); pagesAdded++;
+      }
+    }
+  });
+  renderAll(); save();
+  toast(`${list.length}개 노트에서 ${pagesAdded}쪽을 맨 뒤에 이어 붙였어요` + (diffSize.length ? ` — 크기가 다른 노트: ${diffSize.join(', ')} (개체 위치는 그대로라 밖으로 나갈 수 있어요)` : ''));
+}
+$('#appendBtn').onclick = () => $('#appendFile').click();
+$('#appendFile').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+  const list = [];
+  for (const f of files) { try { list.push({ name: f.name.replace(/\.json$/i, ''), state: await readNoteFile(f) }); } catch (err) { toast(`“${f.name}”은(는) 읽을 수 없어요`); } }
+  if (list.length) { endEdit(true); appendDocs(list); closeModal('#myModal'); }
 };
 for (const m of ['#printModal', '#myModal', '#pdfModal']) $(m).addEventListener('pointerdown', e => { if (e.target === $(m)) $(m).hidden = true; });
 

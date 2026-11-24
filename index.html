@@ -18,7 +18,7 @@
 <body>
 <div id="app">
   <header class="top">
-    <div class="brand"><h1>노트 인쇄</h1><span class="ver" title="화면 버전: 이 번호가 안 바뀌면 예전 화면이에요">v26</span><span id="saveState" class="savestate" aria-live="polite"></span></div>
+    <div class="brand"><h1>노트 인쇄</h1><span class="ver" title="화면 버전: 이 번호가 안 바뀌면 예전 화면이에요">v27</span><span id="saveState" class="savestate" aria-live="polite"></span></div>
     <div class="top-btns">
       <button id="undoBtn" type="button" title="방금 한 일 취소 (Cmd+Z)">↶ 되돌리기</button>
       <button id="redoBtn" type="button" title="다시 하기 (Shift+Cmd+Z)">다시 ↷</button>
@@ -210,6 +210,8 @@
       <button type="button" id="exportBtn">파일로 내보내기</button>
       <button type="button" id="importBtn">파일에서 가져오기</button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <button type="button" id="appendBtn" title="다른 노트 파일의 쪽들을 지금 노트 맨 뒤에 이어 붙여요 (여러 개 고르면 고른 순서대로)">파일에서 뒤에 이어 붙이기</button>
+      <input type="file" id="appendFile" accept=".json,application/json" multiple hidden>
     </div>
     <ul id="myList" class="my-list"></ul>
     <div class="checks"><label><input type="checkbox" id="confirmCloseChk" checked> 닫기 전에, 백업(내 노트 저장·파일 내보내기)하지 않은 변경이 있으면 확인 창 띄우기</label></div>
