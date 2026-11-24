@@ -1497,6 +1497,7 @@ document.addEventListener('keydown', e => {
   const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
   const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
   if (e.code === 'Space' && !typing && editingId == null) { spaceDown = true; scroller.style.cursor = 'grab'; if (!$('#printModal').hidden) return; e.preventDefault(); return; }
+  if (mod && k === 's' && !e.shiftKey) { e.preventDefault(); quickSave(); return; } // 저장은 글자를 고치는 중에도 돼요
   if (editingId != null || typing || !$('#printModal').hidden || !$('#pdfModal').hidden || !$('#myModal').hidden) return;
   if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && k === 'y') { e.preventDefault(); redo(); return; }
@@ -1802,6 +1803,15 @@ function cellPatch(it, patch) {
   }, 'cell' + Object.keys(patch).join(''));
   refreshItems([it.id]); renderPropBox();
 }
+// 영문 대·소문자 바꾸기 (글자 수가 그대로인 글자만 바꿔서, 글자별 서식 위치가 어긋나지 않게)
+function caseMap(str, up, a = 0, b = Infinity) { return Array.from(String(str)).map((ch, i) => { if (i < a || i >= b) return ch; const t = up ? ch.toUpperCase() : ch.toLowerCase(); return Array.from(t).length === 1 ? t : ch; }).join(''); }
+function cellCase(it, up) {
+  if (it.lock) return toast('잠긴 개체는 바꿀 수 없어요. 잠금을 풀어 주세요');
+  if (editingCell != null) endEdit(true);
+  const keys = cellSel && cellSel.id === it.id ? rangeKeys(it, cellSel) : NP.tableGeom(it).cells.map(c => c.key);
+  mutate(() => { for (const k of keys) { const c = it.cells && it.cells[k]; if (c && c.text) c.text = caseMap(c.text, up); } });
+  refreshItems([it.id]); renderPropBox();
+}
 function setTableDims(it, R, C) { // 행 수·열 수를 숫자로 바꾸기 (늘리면 끝에 추가, 줄이면 끝에서 삭제)
   if (it.lock) return toast('잠긴 개체는 바꿀 수 없어요. 잠금을 풀어 주세요');
   R = clamp(Math.round(R), 1, 80); C = clamp(Math.round(C), 1, 40);
@@ -1904,6 +1914,12 @@ function renderItemProps(b, items) {
     b.append(row('글꼴', h('select', { onchange: e => upd(it => { it.font = e.target.value; if (!FONTS[it.font].files[700]) it.bold = false; }) }, Object.entries(FONTS).map(([k, v]) => h('option', { value: k, selected: primary.font === k }, v.label)))));
     b.append(row('글자 크기', stepper(primary.pt, { min: 2, max: 80, step: 1 }, v => upd(it => { it.pt = v; dropSpanKey(it, 'pt'); }, 'pt')), h('span', { class: 'unit' }, 'pt')));
     b.append(row('모양', f.files[700] ? btn('굵게', () => upd(it => { it.bold = !primary.bold; }), { class: primary.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '이 글꼴은 굵게가 없어요')));
+    { // 영문 대·소문자: 고치는 중에 글자를 골랐으면 고른 글자만, 아니면 글 상자 전체
+      const go = up => { const b2 = editorEl(), it = b2 && findItem(editingId);
+        if (it && editSel && editSel.a !== editSel.b && ids.includes(it.id)) { const m = parseEditor(b2, it); renderEditorDOM(b2, it, caseMap(m.text, up, editSel.a, editSel.b), spansFromOv(m.ov, it)); b2.focus(); editorSelect(b2, editSel.a, editSel.b); return; }
+        upd(x => { x.text = caseMap(x.text, up); }); };
+      b.append(row('영문', btn('ABC 모두 대문자', () => go(true), { title: '고른 글자(없으면 글 상자 전체)의 영어를 대문자로' }), btn('abc 모두 소문자', () => go(false), { title: '고른 글자(없으면 글 상자 전체)의 영어를 소문자로' })));
+    }
     if (primary.pt < 5) b.append(h('p', { class: 'hint warnhint' }, '5pt보다 작은 글자는 집 프린터에서 뭉개질 수 있어요(인쇄소 PDF는 더 선명해요).'));
     b.append(row('정렬', seg([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽'], ['justify', '양쪽'], ['distribute', '균등']], primary.align, v => upd(it => { it.align = v; }))));
     if (primary.align === 'justify' || primary.align === 'distribute') b.append(h('p', { class: 'hint' }, primary.align === 'justify' ? '양쪽: 여러 줄 글에서 줄의 양 끝을 상자 폭에 맞춰요(문단의 마지막 줄만 왼쪽).' : '균등: 짧은 한 줄도 글자 사이를 벌려 상자 폭에 꽉 채워요(줄마다).'));
@@ -1990,6 +2006,7 @@ function renderItemProps(b, items) {
     b.append(row('모양', f.files[700] ? btn('굵게', () => cellPatch(it, { bold: !cs.bold }), { class: cs.bold ? 'on' : '' }) : h('span', { class: 'hint' }, '굵게 없음'),
       seg([['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']], cs.align, v => cellPatch(it, { align: v }))));
     b.append(row('세로 위치', seg([['top', '위'], ['middle', '가운데'], ['bottom', '아래']], cs.valign, v => cellPatch(it, { valign: v }))));
+    b.append(row('영문', btn('ABC 대문자', () => cellCase(it, true)), btn('abc 소문자', () => cellCase(it, false))));
     b.append(row('글자색', swatches(cs.color, c => cellPatch(it, { color: c })))); { const hn = colorHint(cs.color); if (hn) b.append(hn); }
     b.append(row('칸 채우기', seg([[0, '없음'], [1, '색']], cs.fill ? 1 : 0, v => cellPatch(it, { fill: v ? { color: 'k20', tone: 100 } : null }))));
     if (cs.fill) { b.append(row('채울 색', swatches(cs.fill.color, c => cellPatch(it, { fill: { ...cs.fill, color: c } })))); b.append(toneRow(cs.fill.tone, v => cellPatch(it, { fill: { ...cs.fill, tone: v } }))); }
@@ -2403,22 +2420,34 @@ function renderMy() {
     const s = saved[n], st = normalize(s.state);
     list.append(h('li', {},
       h('span', { class: 'nm' }, h('b', {}, n), h('span', { class: 'muted small' }, `${st.page.w}×${st.page.h}mm · ${st.pages.length}쪽 · ${new Date(s.t).toLocaleDateString('ko-KR')}`)),
-      btn('불러오기', () => { loadDoc(s.state); closeModal('#myModal'); toast(`“${n}”을(를) 불러왔어요`); }),
+      btn('불러오기', () => { loadDoc(s.state); setCurName(n); closeModal('#myModal'); toast(`“${n}”을(를) 불러왔어요`); }),
       btn('뒤에 붙이기', () => { endEdit(true); appendDocs([{ name: n, state: s.state }]); closeModal('#myModal'); }, { title: '이 노트의 쪽들을 지금 노트 맨 뒤에 이어 붙여요' }),
       btn('지우기', () => { if (!confirm(`“${n}”을(를) 지울까요?`)) return; delete saved[n]; lsSet(LS.saved, saved); renderMy(); })));
   }
 }
-function loadDoc(obj) { snapshot(); endEdit(true); doc = normalize(obj); ui.pageIdx = 0; ui.editMaster = false; selIds = []; selGuide = null; zoom = 1; renderAll(); save(); markBackup(); }
+function loadDoc(obj) { setCurName(null); snapshot(); endEdit(true); doc = normalize(obj); ui.pageIdx = 0; ui.editMaster = false; selIds = []; selGuide = null; zoom = 1; renderAll(); save(); markBackup(); }
 $('#myBtn').onclick = openMy;
 $('#myClose').onclick = () => closeModal('#myModal');
-$('#saveCur').onclick = () => {
-  const name = (prompt('저장할 이름을 적어 주세요', `노트 ${doc.page.w}×${doc.page.h}`) || '').trim(); if (!name) return;
+// 지금 노트의 이름: 한 번 이름을 정해 저장하면, 그 다음부터 “저장”은 묻지 않고 같은 이름에 덮어써요
+let curName = lsGet('noteprint.curName', null);
+function setCurName(n) { curName = n || null; lsSet('noteprint.curName', curName); const sb = $('#saveBtn'); if (sb) sb.title = curName ? `“${curName}”에 저장 (Cmd+S)` : '내 노트에 이름을 정해 저장 (Cmd+S)'; }
+function saveAs() {
+  endEdit(true);
+  const name = (prompt('저장할 이름을 적어 주세요', curName || `노트 ${doc.page.w}×${doc.page.h}`) || '').trim(); if (!name) return;
   const saved = getSaved();
-  if (saved[name] && !confirm(`“${name}”이(가) 이미 있어요. 덮어쓸까요?`)) return;
-  saved[name] = { t: Date.now(), state: doc };
+  if (saved[name] && name !== curName && !confirm(`“${name}”이(가) 이미 있어요. 덮어쓸까요?`)) return;
+  saveNamed(name);
+}
+function saveNamed(name) {
+  const saved = getSaved(); saved[name] = { t: Date.now(), state: doc };
   if (!lsSet(LS.saved, saved)) { toast('저장 공간이 부족해요. 파일로 내보내기를 써 주세요'); return; }
-  markBackup(); renderMy(); toast(`“${name}”로 저장했어요`);
-};
+  setCurName(name); markBackup(); if (!$('#myModal').hidden) renderMy(); toast(`“${name}”에 저장했어요`);
+}
+function quickSave() { endEdit(true); if (curName && getSaved()[curName]) saveNamed(curName); else saveAs(); }
+$('#saveCur').onclick = quickSave;
+$('#saveAsBtn').onclick = saveAs;
+$('#saveBtn').onclick = quickSave;
+setCurName(curName);
 const allItems = d => [...d.masters.flatMap(m => m.items), ...d.pages.flatMap(p => p.items)];
 const blobToDataURL = b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
 $('#exportBtn').onclick = async () => {
@@ -2488,6 +2517,30 @@ scroller.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTra
 scroller.addEventListener('drop', e => { const fs = [...(e.dataTransfer ? e.dataTransfer.files : [])].filter(f => /^image\//.test(f.type) || isFormFile(f)); if (!fs.length) return; e.preventDefault(); if (fs.some(f => !isRaster(f))) importFormFiles(fs); else askDropKind(fs); }); // SVG·PDF는 양식으로만
 $('#formBtn').onclick = () => $('#formFile').click();
 $('#formFile').onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) await importFormFiles(fs); };
+/* ---------- 접는 메뉴: 단추를 누르면 아래로 펼치고, 바깥을 누르거나 항목을 고르면 닫혀요 ---------- */
+const closeMenus = except => document.querySelectorAll('.menupop').forEach(p => { if (p !== except) p.hidden = true; });
+document.querySelectorAll('.menu').forEach(m => {
+  const b = m.querySelector('.menubtn'), p = m.querySelector('.menupop');
+  b.onclick = () => {
+    const willOpen = p.hidden; closeMenus(p); p.hidden = !willOpen; if (!willOpen) return;
+    const r = b.getBoundingClientRect(); p.style.top = r.bottom + 4 + 'px'; p.style.left = r.left + 'px';
+    const pr = p.getBoundingClientRect(); if (pr.right > innerWidth - 8) p.style.left = Math.max(8, innerWidth - 8 - pr.width) + 'px';
+  };
+  p.addEventListener('click', e => { const t = e.target.closest('button'); if (t && !t.classList.contains('tog')) p.hidden = true; }); // 켜고 끄는 단추는 여러 개 바꿀 수 있게 열어 둬요
+});
+document.addEventListener('pointerdown', e => { if (!e.target.closest('.menu')) closeMenus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
+window.addEventListener('resize', () => closeMenus());
+document.getElementById('stageScroll').addEventListener('scroll', () => closeMenus());
+/* ---------- 오른쪽 칸 접기: 접거나 편 상태를 기억해 두고 다음에 열 때도 그대로 ---------- */
+{
+  const KEY = 'noteprint.folds.v1', st = lsGet(KEY, {});
+  document.querySelectorAll('#side details').forEach(d => {
+    const k = (d.querySelector('summary') || {}).textContent || ''; if (!k) return;
+    if (k in st) d.open = !!st[k];
+    d.addEventListener('toggle', () => { const cur = lsGet(KEY, {}); cur[k] = d.open; lsSet(KEY, cur); });
+  });
+}
 function updateToggles() {
   $('#tgRuler').classList.toggle('on', ui.rulers); $('#tgGuides').classList.toggle('on', ui.userGuides);
   $('#tgSmart').classList.toggle('on', ui.smart); $('#tgGrid').classList.toggle('on', doc.snap);
