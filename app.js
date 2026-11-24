@@ -2419,24 +2419,45 @@ function renderMy() {
   for (const n of names) {
     const s = saved[n], st = normalize(s.state);
     list.append(h('li', {},
-      h('span', { class: 'nm' }, h('b', {}, n), h('span', { class: 'muted small' }, `${st.page.w}×${st.page.h}mm · ${st.pages.length}쪽 · ${new Date(s.t).toLocaleDateString('ko-KR')}`)),
+      h('span', { class: 'nm' }, h('b', {}, n + (n === curName ? '  ← 지금 노트' : '')), h('span', { class: 'muted small' }, `${st.page.w}×${st.page.h}mm · ${st.pages.length}쪽 · ${new Date(s.t).toLocaleDateString('ko-KR')}`)),
       btn('불러오기', () => { loadDoc(s.state); setCurName(n); closeModal('#myModal'); toast(`“${n}”을(를) 불러왔어요`); }),
       btn('뒤에 붙이기', () => { endEdit(true); appendDocs([{ name: n, state: s.state }]); closeModal('#myModal'); }, { title: '이 노트의 쪽들을 지금 노트 맨 뒤에 이어 붙여요' }),
       btn('지우기', () => { if (!confirm(`“${n}”을(를) 지울까요?`)) return; delete saved[n]; lsSet(LS.saved, saved); renderMy(); })));
   }
 }
-function loadDoc(obj) { setCurName(null); snapshot(); endEdit(true); doc = normalize(obj); ui.pageIdx = 0; ui.editMaster = false; selIds = []; selGuide = null; zoom = 1; renderAll(); save(); markBackup(); }
+function loadDoc(obj) { setCurName(null); setNameHint(null); snapshot(); endEdit(true); doc = normalize(obj); ui.pageIdx = 0; ui.editMaster = false; selIds = []; selGuide = null; zoom = 1; renderAll(); save(); markBackup(); }
 $('#myBtn').onclick = openMy;
 $('#myClose').onclick = () => closeModal('#myModal');
 // 지금 노트의 이름: 한 번 이름을 정해 저장하면, 그 다음부터 “저장”은 묻지 않고 같은 이름에 덮어써요
-let curName = lsGet('noteprint.curName', null);
+let curName = lsGet('noteprint.curName', null), nameHint = lsGet('noteprint.nameHint', null); // nameHint: 파일에서 가져온 노트의 파일 이름(저장 창에 미리 적어 둬요)
+const setNameHint = n => { nameHint = n || null; lsSet('noteprint.nameHint', nameHint); };
 function setCurName(n) { curName = n || null; lsSet('noteprint.curName', curName); const sb = $('#saveBtn'); if (sb) sb.title = curName ? `“${curName}”에 저장 (Cmd+S)` : '내 노트에 이름을 정해 저장 (Cmd+S)'; }
-function saveAs() {
+function saveAs() { // 저장 창: 이름 적기 + 최근 저장한 노트 목록(눌러서 그 이름에 덮어쓰기)
   endEdit(true);
-  const name = (prompt('저장할 이름을 적어 주세요', curName || `노트 ${doc.page.w}×${doc.page.h}`) || '').trim(); if (!name) return;
-  const saved = getSaved();
-  if (saved[name] && name !== curName && !confirm(`“${name}”이(가) 이미 있어요. 덮어쓸까요?`)) return;
-  saveNamed(name);
+  const saved = getSaved(), names = Object.keys(saved).sort((a, b) => (saved[b].t || 0) - (saved[a].t || 0));
+  const modal = h('div', { class: 'modal' }), close = () => modal.remove();
+  const inp = h('input', { type: 'text', class: 'savename', value: curName || nameHint || `노트 ${doc.page.w}×${doc.page.h}`, onkeydown: e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') close(); } });
+  const go = () => {
+    const name = inp.value.trim(); if (!name) { inp.focus(); return; }
+    if (getSaved()[name] && name !== curName && !confirm(`“${name}”이(가) 이미 있어요. 지금 노트로 덮어쓸까요?`)) return;
+    close(); saveNamed(name);
+  };
+  const when = t => { const d = new Date(t); return `${d.toLocaleDateString('ko-KR')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const list = h('ul', { class: 'my-list savelist' });
+  if (!names.length) list.append(h('li', { class: 'empty' }, '아직 저장한 노트가 없어요'));
+  for (const n of names) {
+    const st = normalize(saved[n].state);
+    list.append(h('li', { class: n === inp.value ? 'on' : '', onclick: e => { if (e.target.closest('button')) return; inp.value = n; list.querySelectorAll('li').forEach(x => x.classList.toggle('on', x === e.currentTarget)); } },
+      h('span', { class: 'nm' }, h('b', {}, n), h('span', { class: 'muted small' }, `${st.page.w}×${st.page.h}mm · ${st.pages.length}쪽 · ${when(saved[n].t)}`)),
+      btn('여기에 저장', () => { if (n !== curName && !confirm(`“${n}”을(를) 지금 노트로 덮어쓸까요?\n(예전 내용은 사라져요)`)) return; close(); saveNamed(n); })));
+  }
+  modal.append(h('div', { class: 'card savecard' },
+    h('div', { class: 'card-head' }, h('h2', {}, '내 노트에 저장'), btn('닫기 ✕', close, { class: 'ghost' })),
+    h('div', { class: 'row' }, h('label', {}, '이름'), inp, btn('저장', go, { class: 'primary' })),
+    h('div', { class: 'sub2' }, '최근 저장한 노트 — 누르면 그 이름이 들어가요. “여기에 저장”은 그 노트에 바로 덮어써요'),
+    list));
+  modal.addEventListener('pointerdown', e => { if (e.target === modal) close(); });
+  document.body.append(modal); inp.focus(); inp.select();
 }
 function saveNamed(name) {
   const saved = getSaved(); saved[name] = { t: Date.now(), state: doc };
@@ -2465,7 +2486,7 @@ async function readNoteFile(f) { // 노트 파일(.json)을 읽어 문서를 돌
 $('#importBtn').onclick = () => $('#importFile').click();
 $('#importFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { loadDoc(await readNoteFile(f)); closeModal('#myModal'); toast('파일에서 불러왔어요'); } catch (err) { toast('이 파일은 읽을 수 없어요'); }
+  try { loadDoc(await readNoteFile(f)); setNameHint(f.name.replace(/\.json$/i, '')); closeModal('#myModal'); toast('파일에서 불러왔어요'); } catch (err) { toast('이 파일은 읽을 수 없어요'); }
 };
 // 다른 노트의 쪽들을 지금 노트 맨 뒤에 이어 붙여요 (A 양식 + B 양식 …). 바탕·내 색도 같이 가져오고, 번호가 겹치지 않게 새로 매겨요
 function appendDocs(list) { // list: [{ name, state }]

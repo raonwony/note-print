@@ -359,3 +359,10 @@ input.cname-in{width:96px;border:1px solid var(--line);border-radius:6px;padding
 .menupop[hidden]{display:none}
 .menupop button{text-align:left;justify-content:flex-start;width:100%}
 .menupop .legend{margin:6px 2px 2px;max-width:280px;flex-direction:column;align-items:flex-start;line-height:1.5}
+.savecard{width:min(520px,100%)}
+.savecard .row{display:flex;gap:8px;align-items:center;margin:10px 0}
+.savecard .savename{flex:1;min-width:0;padding:8px 10px;font-size:15px}
+.savelist{max-height:50vh;overflow:auto}
+.savelist li{cursor:pointer;padding:9px 6px;border-radius:8px}
+.savelist li:hover{background:#f3f6f4}
+.savelist li.on{background:#e3f1ec}
