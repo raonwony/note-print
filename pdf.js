@@ -249,11 +249,11 @@
     }
 
     /* ---- 쪽 만들기 ---- */
-    const plan = o.pages.map(i => ({ idx: i }));
+    const plan = o.pages.map(i => (typeof i === 'object' ? { blank: true, prev: i.prev } : { idx: i })); // 섹션 앞 자동 빈 쪽은 { blank, prev }
     if (o.blankEnd && o.pages.length) plan.push({ blank: true }); // 양면 인쇄용: 쪽수가 홀수이면 끝에 빈 쪽 1개
     let n = 0;
     for (const pl of plan) {
-      const blank = !!pl.blank, lastPg = doc.pages[o.pages[o.pages.length - 1]];
+      const blank = !!pl.blank, lastPg = doc.pages[pl.blank && pl.prev != null ? pl.prev : o.pages.filter(i => typeof i === 'number').pop()];
       const pg = blank ? { master: lastPg.master, items: [], guides: [] } : doc.pages[pl.idx], pageNo = blank ? total + 1 : pl.idx + 1, m = doc.masters.find(q => q.id === pg.master) || null;
       progress(`${++n} / ${plan.length} 쪽 만드는 중…`);
       const page = pdf.addPage([MW, MH]);

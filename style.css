@@ -366,3 +366,6 @@ input.cname-in{width:96px;border:1px solid var(--line);border-radius:6px;padding
 .savelist li{cursor:pointer;padding:9px 6px;border-radius:8px}
 .savelist li:hover{background:#f3f6f4}
 .savelist li.on{background:#e3f1ec}
+/* 섹션 앞 자동 빈 쪽 (인쇄·PDF에만 들어가요) */
+.pthumb.ghost,.thumb.ghost{background:repeating-linear-gradient(45deg,#f4f4f4 0 6px,#fafafa 6px 12px);box-shadow:none;outline:1.5px dashed #b9b9b9;cursor:default;display:flex;align-items:center;justify-content:center}
+.ghost .gtx{font-size:11px;color:#888;white-space:pre-line;text-align:center}

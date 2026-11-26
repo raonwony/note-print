@@ -192,7 +192,7 @@ function normalize(s) {
     let id = typeof p.id === 'string' && !pids.has(p.id) ? p.id : 'p' + (pids.size + 100);
     pids.add(id);
     const pnum = p.num && typeof p.num === 'object' ? { ...(p.num.off ? { off: true } : {}), ...(p.num.h === 'outer' || p.num.h === 'center' ? { h: p.num.h } : {}), ...(p.num.v === 'top' || p.num.v === 'bottom' ? { v: p.num.v } : {}) } : null;
-    o.pages.push({ id, master: o.masters.some(m => m.id === p.master) ? p.master : null, guides: guides(p.guides), items: items(p.items), ...(pnum && Object.keys(pnum).length ? { num: pnum } : {}), ...(bgN(p.bg) ? { bg: bgN(p.bg) } : {}) });
+    o.pages.push({ id, master: o.masters.some(m => m.id === p.master) ? p.master : null, guides: guides(p.guides), items: items(p.items), ...(pnum && Object.keys(pnum).length ? { num: pnum } : {}), ...(bgN(p.bg) ? { bg: bgN(p.bg) } : {}), ...(p.sec ? { sec: true } : {}) });
   }
   if (!o.pages.length) o.pages.push({ id: 'p1', master: o.masters[0] ? o.masters[0].id : null, guides: [], items: [] });
   o.guideSets = (Array.isArray(src.guideSets) ? src.guideSets : []).slice(0, 30).map((q, i) => ({ id: String((q && q.id) || 'S' + i), name: String((q && q.name) || '가이드 묶음'), guides: guides(q && q.guides).map(({ axis, pos, color }) => ({ axis, pos, ...(color ? { color } : {}) })) })).filter(q => q.guides.length);
@@ -533,8 +533,8 @@ function bgEls(list, bleed, pageNo) {
 function buildPageDOM(page, pageNo, o = {}) {
   const m = masterById(page.master), gs = m ? m.grid.size : 5;
   const root = h('div', { class: 'pgv' });
-  root.append(...bgEls([m && m.bg, page.bg], 0, pageNo));
-  if (m && o.grid !== false) root.append(gridSVG(m, 0));
+  root.append(...bgEls([m && m.bg, page.bg], o.bleed || 0, pageNo));
+  if (m && o.grid !== false) root.append(gridSVG(m, o.bleed || 0));
   if (m) for (const it of m.items) if (!it.hide) root.append(makeItemEl(it, false, pageNo, gs));
   for (const it of page.items) if (!it.hide) root.append(makeItemEl(it, false, pageNo, gs));
   const ni = NP.pageNumItem(doc, pageNo - 1, page); if (ni) root.append(makeItemEl(ni, false, pageNo, gs));
@@ -2038,7 +2038,8 @@ function renderStrip() {
   const { w, h: ph } = doc.page, u = Math.min(84 / ph, 120 / w), sel = new Set(selPageIdxs());
   doc.pages.forEach((pg, i) => {
     const th = h('div', { class: 'thumb' + (i === ui.pageIdx && !ui.editMaster ? ' cur' : '') + (sel.has(i) && sel.size > 1 ? ' sel' : ''), style: `width:${w * u}px;height:${ph * u}px;--u:${u}px`, onclick: e => clickPage(i, e), title: `${i + 1}쪽` },
-      buildPageDOM(pg, i + 1), h('span', { class: 'tn' }, String(i + 1)));
+      buildPageDOM(pg, i + 1), h('span', { class: 'tn' }, String(i + 1) + (pg.sec ? ' §' : '')));
+    if (i > 0 && pg.sec && NP.physIdx(doc, i) !== NP.physIdx(doc, i - 1) + 1) box.append(h('div', { class: 'thumb ghost', style: `width:${w * u}px;height:${ph * u}px`, title: '자동 빈 쪽 (인쇄할 때만 들어가요)' }, h('span', { class: 'gtx' }, '빈 쪽'), h('span', { class: 'tn' }, '자동')));
     box.append(th);
   });
   $('#pageLabel').textContent = `${ui.pageIdx + 1} / ${doc.pages.length}쪽` + (sel.size > 1 ? ` (${sel.size}쪽 선택)` : '');
@@ -2079,11 +2080,11 @@ function addBlankPages(count) { // 맨 뒤에 빈 쪽 추가 (마지막 쪽과 �
   renderStrip();
 }
 function updateCountBanner() {
-  const b = $('#countBanner'), n = doc.pages.length, need = (4 - (n % 4)) % 4;
+  const b = $('#countBanner'), n = NP.printSlots(doc).length, need = (4 - (n % 4)) % 4; // 자동 빈 쪽까지 센 실제 쪽수
   b.textContent = '';
   if (doc.kind !== 'bound' || !need) { b.hidden = true; return; }
   b.hidden = false;
-  b.append(h('span', {}, `⚠ 지금 ${n}쪽이에요. 노출제본은 4의 배수여야 해서 ${need}쪽이 모자라요.`), btn(`빈 쪽 ${need}개 추가`, () => { addBlankPages(need); toast(`빈 쪽 ${need}개를 맨 뒤에 추가했어요`); }, { class: 'primary' }));
+  b.append(h('span', {}, `⚠ 지금 ${n}쪽이에요${n !== doc.pages.length ? `(섹션 빈 쪽 ${n - doc.pages.length}개 포함)` : ''}. 노출제본은 4의 배수여야 해서 ${need}쪽이 모자라요.`), btn(`빈 쪽 ${need}개 추가`, () => { addBlankPages(need); toast(`빈 쪽 ${need}개를 맨 뒤에 추가했어요`); }, { class: 'primary' }));
 }
 function duplicatePage() {
   endEdit();
@@ -2135,11 +2136,19 @@ function renderPagesBox() {
   b.append(h('p', { class: 'hint' }, `총 ${n}쪽 · 1쪽은 오른쪽 페이지부터 시작해요 (2·3쪽이 마주 봐요). 쪽을 눌러 열고, Shift/Cmd를 누른 채 눌러 여러 쪽을 고른 뒤 끌어서 순서를 바꿔요. (터치: 쪽 위쪽 ⠿ 손잡이를 끌기)`));
   b.append(h('div', { class: 'btnrow' }, btn('＋ 빈 쪽', addPage), btn('복제', duplicatePage), btn('삭제', deletePage), btn('◀ 앞으로', () => movePage(-1)), btn('뒤로 ▶', () => movePage(1)),
     btn('모두 선택', () => { pageSel = doc.pages.map(p => p.id); pageAnchor = pageSel[0]; renderStrip(); }), btn('선택 풀기', () => { pageSel = [doc.pages[ui.pageIdx].id]; renderStrip(); })));
+  { // 새 섹션 시작: 고른 쪽이 항상 앞면에서 시작하게 (뒷면에 걸리면 인쇄·PDF 때 바로 앞에 빈 쪽 자동)
+    const ix = selPageIdxs().filter(i => i > 0), on = ix.length > 0 && ix.every(i => doc.pages[i].sec);
+    b.append(h('div', { class: 'checks' }, h('label', { title: '양식을 여러 개 이어 붙였을 때, 각 양식의 첫 쪽에 켜 두면 앞뒤가 꼬이지 않아요' }, h('input', { type: 'checkbox', checked: on, disabled: !ix.length, onchange: e => { mutate(() => { for (const i of ix) { if (e.target.checked) doc.pages[i].sec = true; else delete doc.pages[i].sec; } }); renderStrip(); renderGuides(); renderBackdrop(); } }), `고른 쪽에서 새 섹션 시작 (항상 앞면에서 — 뒷면에 걸리면 빈 쪽 자동)${ix.length ? '' : ' · 1쪽은 늘 앞면이에요'}`)));
+    const blanks = NP.printSlots(doc).length - n;
+    if (blanks) b.append(h('p', { class: 'hint' }, `섹션 때문에 인쇄·PDF에 빈 쪽 ${blanks}개가 자동으로 들어가요 (흐린 “빈 쪽” 칸). 노트 파일에는 더해지지 않아요.`));
+  }
   const width = b.clientWidth || 300, tw = clamp(Math.floor((width - 6) / 2), 60, 150), u = tw / doc.page.w, th = doc.page.h * u;
   const grid = h('div', { class: 'spreads', style: `--tw:${tw}px` });
   doc.pages.forEach((pg, i) => {
-    const t = h('div', { class: 'pthumb ' + (i % 2 === 0 ? 'R' : 'L') + (i === ui.pageIdx ? ' cur' : '') + (sel.has(i) ? ' sel' : ''), 'data-i': i, style: `width:${tw}px;height:${th}px;--u:${u}px;${i === 0 ? 'grid-column:2;' : ''}`, title: `${i + 1}쪽` },
-      buildPageDOM(pg, i + 1), h('span', { class: 'grip', title: '끌어서 순서 바꾸기' }, '⠿'), h('span', { class: 'pn' }, String(i + 1)));
+    const ph = NP.physIdx(doc, i);
+    if (i > 0 && ph !== NP.physIdx(doc, i - 1) + 1) grid.append(h('div', { class: 'pthumb ghost L', style: `width:${tw}px;height:${th}px`, title: '새 섹션이 앞면에서 시작하도록 인쇄·PDF에 자동으로 들어가는 빈 쪽이에요 (노트에는 없어요)' }, h('span', { class: 'gtx' }, '빈 쪽\n(자동)')));
+    const t = h('div', { class: 'pthumb ' + (ph % 2 === 0 ? 'R' : 'L') + (i === ui.pageIdx ? ' cur' : '') + (sel.has(i) ? ' sel' : ''), 'data-i': i, style: `width:${tw}px;height:${th}px;--u:${u}px;${i === 0 ? 'grid-column:2;' : ''}`, title: `${i + 1}쪽 · ${ph % 2 === 0 ? '앞면' : '뒷면'}${pg.sec ? ' · 새 섹션 시작' : ''}` },
+      buildPageDOM(pg, i + 1), h('span', { class: 'grip', title: '끌어서 순서 바꾸기' }, '⠿'), h('span', { class: 'pn' }, `${i + 1} · ${ph % 2 === 0 ? '앞' : '뒤'}${pg.sec ? ' · §섹션' : ''}`));
     grid.append(t);
   });
   b.append(grid);
@@ -2216,13 +2225,16 @@ if (!po.cut) po.cut = po.marks === false ? 'none' : 'line';
 const duplexOn = () => (po.duplex == null ? doc.kind === 'binder' : !!po.duplex); // 바인더 노트는 기본이 양면
 const printOpen = () => !$('#printModal').hidden;
 const PREVIEW_SHEETS = 6;
+// 집 인쇄(큰 용지에 모아 찍기): 노트 사이를 2mm 띄우고 그 한가운데에 자르는 선을 하나만 그어요(한 번만 자르면 돼요).
+// 각 쪽은 배경을 1mm씩 틈으로 넘쳐 찍어서, 양면 앞뒤가 1mm쯤 어긋나도 자른 가장자리에 흰 줄이 덜 보여요.
+const HOME_GAP = 2, HOME_BLEED = HOME_GAP / 2;
 
 function layoutCalc() {
   const { w, h: ph } = doc.page;
   if (po.mode === 'single') return { SW: w, SH: ph, cols: 1, rows: 1, n: 1, max: 1, cells: [{ x: 0, y: 0 }], marks: false, label: '' };
   const sh = SHEETS.find(s => s.name === po.sheet) || SHEETS[0];
   const tries = po.orient === 'portrait' ? [[sh.w, sh.h, '세로']] : po.orient === 'landscape' ? [[sh.h, sh.w, '가로']] : [[sh.w, sh.h, '세로'], [sh.h, sh.w, '가로']];
-  const m = po.margin, g = po.gap;
+  const m = po.margin, g = HOME_GAP;
   let best = null;
   for (const [SW, SH, label] of tries) {
     const cols = Math.max(0, Math.floor((SW - 2 * m + g + 1e-6) / (w + g)));
@@ -2236,8 +2248,10 @@ function layoutCalc() {
   return { ...best, n, max, cells, marks: po.marks && g >= 1 };
 }
 function leafPairs() { // 같은 종이의 앞(홀수 쪽)·뒤(짝수 쪽) 짝
-  const ix = po.what === 'current' ? [ui.pageIdx] : doc.pages.map((_, i) => i), seen = new Set(), out = [];
-  for (const i of ix) { const f = i - (i % 2); if (seen.has(f)) continue; seen.add(f); out.push([f, f + 1 < doc.pages.length ? f + 1 : -1]); }
+  const slots = NP.printSlots(doc), out = []; // 섹션 앞 자동 빈 쪽은 -1(빈 뒷면)
+  const pairs = []; for (let k = 0; k < slots.length; k += 2) { const b = slots[k + 1]; pairs.push([slots[k], b == null || typeof b === 'object' ? -1 : b]); }
+  if (po.what !== 'current') return pairs;
+  for (const p of pairs) if (p.includes(ui.pageIdx)) out.push(p);
   return out;
 }
 function mirrorCell(L, c) { // 종이를 뒤집으면 뒷면에서 같은 자리는 거울처럼 반대쪽이 됨
@@ -2263,22 +2277,17 @@ function planSheets(L) { // [{ side: '앞'|'뒤'|'', cells: [{ page(-1=빈 뒷�
   }
   return sheets;
 }
-function marksSVG(L, cells) { // 모서리 표시(짧은 선)
+function cutLinesSVG(L, cells) { // 재단기용 점선: 노트와 노트 사이 틈의 한가운데에 한 줄, 바깥 가장자리는 노트 테두리에 한 줄
   const svg = svgEl('svg', { viewBox: `0 0 ${L.SW} ${L.SH}`, preserveAspectRatio: 'none', class: 'marks' });
-  const { w, h: ph } = doc.page, len = Math.min(3, po.gap / 2 + (po.gap < 2 ? 0 : 0.5));
+  const { w, h: ph } = doc.page, e = 3, g = HOME_GAP;
+  const lines = (starts, size) => {
+    const a = [...new Set(starts.map(r2))].sort((p, q) => p - q), out = new Set();
+    for (const s0 of a) { const end = r2(s0 + size), next = a.find(v => Math.abs(v - (end + g)) < 0.05); out.add(next != null ? r2(end + g / 2) : end); if (!a.some(v => Math.abs(v + size + g - s0) < 0.05)) out.add(s0); }
+    return [...out];
+  };
   let d = '';
-  for (const c of cells) for (const [cx, cy, sx, sy] of [[c.x, c.y, -1, -1], [c.x + w, c.y, 1, -1], [c.x, c.y + ph, -1, 1], [c.x + w, c.y + ph, 1, 1]])
-    d += `M${r2(cx)} ${r2(cy)}h${sx * len}M${r2(cx)} ${r2(cy)}v${sy * len}`;
-  svg.append(svgEl('path', { d, stroke: '#000', 'stroke-width': 0.15, fill: 'none' }));
-  return svg;
-}
-function cutLinesSVG(L, cells) { // 재단기용: 노트 가장자리를 따라 용지 끝(프린터가 찍을 수 있는 곳)에서 끝까지 이어지는 점선
-  const svg = svgEl('svg', { viewBox: `0 0 ${L.SW} ${L.SH}`, preserveAspectRatio: 'none', class: 'marks' });
-  const { w, h: ph } = doc.page, e = 3, xs = new Set(), ys = new Set();
-  for (const c of cells) { xs.add(r2(c.x)); xs.add(r2(c.x + w)); ys.add(r2(c.y)); ys.add(r2(c.y + ph)); }
-  let d = '';
-  for (const x of xs) d += `M${x} ${e}V${r2(L.SH - e)}`;
-  for (const y of ys) d += `M${e} ${y}H${r2(L.SW - e)}`;
+  for (const x of lines(cells.map(c => c.x), w)) d += `M${x} ${e}V${r2(L.SH - e)}`;
+  for (const y of lines(cells.map(c => c.y), ph)) d += `M${e} ${y}H${r2(L.SW - e)}`;
   svg.append(svgEl('path', { d, stroke: '#000', 'stroke-width': 0.12, 'stroke-dasharray': '1.6 1.2', fill: 'none' }));
   return svg;
 }
@@ -2298,10 +2307,12 @@ function renderSheets(full) {
     sheet.style.width = U(L.SW); sheet.style.height = U(L.SH - 0.4);
     for (const { page, blankOf, cell } of sheetCells) {
       const pgObj = page >= 0 ? doc.pages[page] : { master: doc.pages[blankOf].master, items: [], guides: [], num: { off: true } }; // 뒷면이 없으면 모눈만 있는 빈 쪽
-      const pg = h('div', { class: 'pg', style: `left:${U(cell.x)};top:${U(cell.y)};width:${U(doc.page.w)};height:${U(doc.page.h)}` }, buildPageDOM(pgObj, (page >= 0 ? page : blankOf + 1) + 1, { grid: po.bg }));
+      const bl = po.mode === 'sheet' ? HOME_BLEED : 0, inner = buildPageDOM(pgObj, (page >= 0 ? page : blankOf + 1) + 1, { grid: po.bg, bleed: bl });
+      if (bl) inner.style.cssText = `left:${U(bl)};top:${U(bl)};width:${U(doc.page.w)};height:${U(doc.page.h)};overflow:visible`;
+      const pg = h('div', { class: 'pg' + (bl ? ' bled' : ''), style: `left:${U(cell.x - bl)};top:${U(cell.y - bl)};width:${U(doc.page.w + 2 * bl)};height:${U(doc.page.h + 2 * bl)}` }, inner);
       sheet.append(pg);
     }
-    if (po.mode === 'sheet') { const cs = sheetCells.map(c => c.cell); if (po.cut === 'line') sheet.append(cutLinesSVG(L, cs)); else if (po.cut === 'tick' && po.gap >= 1) sheet.append(marksSVG(L, cs)); }
+    if (po.mode === 'sheet') sheet.append(cutLinesSVG(L, sheetCells.map(c => c.cell)));
     host.append(sheet);
   });
   const info = $('#layoutInfo'), tip = $('#printTip'), nsel = po.what === 'current' ? 1 : doc.pages.length, dup = duplexOn();
@@ -2330,10 +2341,8 @@ function renderPrintOpts() {
     b.append(row('용지', h('select', { onchange: e => { po.sheet = e.target.value; upd(); } }, SHEETS.map(s => h('option', { value: s.name, selected: s.name === po.sheet }, `${s.name} (${s.w}×${s.h})`)))));
     b.append(row('방향', h('select', { onchange: e => { po.orient = e.target.value; upd(); } }, [['auto', '자동 (많이 들어가는 쪽)'], ['portrait', '세로'], ['landscape', '가로']].map(([v, l]) => h('option', { value: v, selected: po.orient === v }, l)))));
     b.append(row('바깥 여백', stepper(po.margin, { min: 0, max: 30, step: 1 }, v => { po.margin = v; upd(); }), h('span', { class: 'unit' }, 'mm (프린터는 가장자리 3~5mm를 못 찍어요)')));
-    b.append(row('노트 사이', stepper(po.gap, { min: 0, max: 30, step: 1 }, v => { po.gap = v; upd(); }), h('span', { class: 'unit' }, 'mm')));
     b.append(row('한 면에', stepper(po.count, { min: 0, max: 99, step: 1 }, v => { po.count = Math.round(v); upd(); }), h('span', { class: 'unit' }, po.count ? '개만' : '(0 = 가득)')));
-    b.append(row('자르는 선', seg([['line', '점선 (재단기용)'], ['tick', '모서리 표시'], ['none', '없음']], po.cut, v => { po.cut = v; upd(); })));
-    if (po.cut !== 'none' && po.gap < 1) b.append(h('p', { class: 'hint warnc' }, '노트 사이가 0이면 선이 노트 가장자리에 겹쳐요. 4mm쯤 띄우면 선이 빈 틈에 놓여서 보기 좋아요.'));
+    b.append(h('p', { class: 'hint' }, `자르는 선: 노트 사이를 ${HOME_GAP}mm 띄우고 그 한가운데에 점선을 한 줄만 그어요. 선을 따라 한 번씩만 자르면 돼요. 쪽마다 배경을 ${HOME_BLEED}mm씩 넘쳐 찍어서, 양면 앞뒤가 조금 어긋나도 가장자리에 흰 줄이 덜 보여요.`));
   }
   b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: po.bg, onchange: e => { po.bg = e.target.checked; upd(); } }), '바탕 모눈도 함께 찍기')));
 }
@@ -2351,7 +2360,7 @@ function pdfFileName() { return `노트내지_${doc.page.w}x${doc.page.h}_${pdfO
 function renderPdfOpts() {
   const b = $('#pdfOpts'); b.textContent = '';
   const upd = () => { lsSet('noteprint.pdf.v2', pdfOpt); renderPdfOpts(); };
-  const n = doc.pages.length, need = doc.kind === 'bound' && pdfOpt.what === 'all' ? (4 - (n % 4)) % 4 : 0, oddEnd = doc.kind === 'binder' && pdfOpt.what === 'all' && n % 2 === 1;
+  const n = doc.pages.length, ns = NP.printSlots(doc).length, secB = pdfOpt.what === 'all' ? ns - n : 0, need = doc.kind === 'bound' && pdfOpt.what === 'all' ? (4 - (ns % 4)) % 4 : 0, oddEnd = doc.kind === 'binder' && pdfOpt.what === 'all' && ns % 2 === 1;
   b.append(row('내보낼 쪽', seg([['all', `모든 쪽 (${n}쪽)`], ['current', `지금 쪽(${ui.pageIdx + 1})만`]], pdfOpt.what, v => { pdfOpt.what = v; upd(); })));
   b.append(row('도련', stepper(doc.bleed, { min: 0, max: 10, step: 1 }, v => { mutate(() => { doc.bleed = v; }); zoom = 1; renderAll(); renderPdfOpts(); }), h('span', { class: 'unit' }, 'mm  (레드프린팅 책자는 5mm)')));
   b.append(h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', checked: pdfOpt.marks, onchange: e => { pdfOpt.marks = e.target.checked; upd(); } }), '재단선(자르는 표시)을 파일에 넣기')));
@@ -2359,6 +2368,7 @@ function renderPdfOpts() {
     ? '재단선을 넣으면 종이가 도련보다 사방 8mm 더 커지고, 모서리에 자르는 표시와 쪽 번호가 들어가요. 레드프린팅은 표시(Marks)를 넣지 말라고 해요.'
     : '재단선 표시 없이 “재단 크기 + 도련”만 꽉 채워 내보내요(레드프린팅 가이드 방식).'));
   if (need) b.append(h('p', { class: 'info warn' }, `⚠ 노출제본은 쪽수가 4의 배수여야 해요. 지금 ${n}쪽이라 ${need}쪽이 모자라요. 아래 단추를 누르면 빈 쪽 ${need}개를 맨 뒤에 더하고 내보내요.`));
+  if (secB) b.append(h('p', { class: 'info' }, `ℹ 새 섹션이 앞면에서 시작하도록 빈 쪽 ${secB}개를 자동으로 넣어 내보내요 (노트 파일에는 더해지지 않아요).`));
   if (oddEnd) b.append(h('p', { class: 'info' }, 'ℹ 쪽수가 홀수라, 양면 인쇄에서 앞뒤가 맞도록 PDF 끝에 빈 쪽 1개를 붙여서 내보내요 (노트 파일에는 더해지지 않아요).'));
   $('#doPdf').textContent = need ? `빈 쪽 ${need}개 추가하고 PDF 만들기` : 'PDF 만들기';
 }
@@ -2370,9 +2380,9 @@ $('#doPdf').onclick = async () => {
   btn0.disabled = true; out.textContent = '';
   const status = h('p', { class: 'info' }, 'PDF를 만드는 중…'); out.append(status);
   try {
-    if (doc.kind === 'bound' && pdfOpt.what === 'all') { const need = (4 - (doc.pages.length % 4)) % 4; if (need) { addBlankPages(need); renderPdfOpts(); } }
-    const pages = pdfOpt.what === 'current' ? [ui.pageIdx] : doc.pages.map((_, i) => i);
-    const blankEnd = doc.kind === 'binder' && pdfOpt.what === 'all' && doc.pages.length % 2 === 1;
+    if (doc.kind === 'bound' && pdfOpt.what === 'all') { const need = (4 - (NP.printSlots(doc).length % 4)) % 4; if (need) { addBlankPages(need); renderPdfOpts(); } }
+    const pages = pdfOpt.what === 'current' ? [ui.pageIdx] : NP.printSlots(doc);
+    const blankEnd = doc.kind === 'binder' && pdfOpt.what === 'all' && pages.length % 2 === 1;
     const res = await NP.exportPDF(doc, { blankEnd, bleed: doc.bleed, marks: pdfOpt.marks, pages, title: `노트 ${doc.page.w}×${doc.page.h}`, getImage: idbGet }, m => { status.textContent = m; });
     const blob = new Blob([res.bytes], { type: 'application/pdf' }), name = pdfFileName();
     const a = h('a', { href: URL.createObjectURL(blob), download: name });
@@ -2506,8 +2516,9 @@ function appendDocs(list) { // list: [{ name, state }]
         const nm = { ...m, id: newId('m', doc.masters), name: doc.masters.some(x => x.name === m.name) ? `${m.name} (${name})` : m.name };
         reId(nm.items); doc.masters.push(nm); mmap.set(m.id, nm.id);
       }
-      for (const p of src.pages) {
+      for (const [k, p] of src.pages.entries()) {
         const np = { ...p, id: newId('p', doc.pages), master: mmap.get(p.master) || p.master };
+        if (k === 0) np.sec = true; // 이어 붙인 노트의 첫 쪽 = 새 섹션 시작 (뒷면에 걸리면 인쇄 때 빈 쪽 자동)
         reId(np.items); doc.pages.push(np); pagesAdded++;
       }
     }

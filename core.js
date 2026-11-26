@@ -240,9 +240,18 @@
   NP.safeOf = doc => { const s = doc.safe || 0, o = doc.safeSides || {}, v = k => (o[k] >= 0 ? o[k] : s); return { t: v('t'), r: v('r'), b: v('b'), l: v('l') }; };
   // 제본 구멍과 추가 여유를 뺀 실제 배치 영역. master는 홀짝 양쪽 페이지에
   // 반복되므로 자동 반전이면 좌우 구멍 영역을 모두 확보합니다.
+  // 섹션: “새 섹션 시작” 표시(page.sec)가 있는 쪽은 항상 앞면(홀수 번째 면)에서 시작해요.
+  // 뒷면에 걸리면 인쇄·PDF에서 바로 앞에 빈 쪽을 자동으로 넣어요(노트 파일은 그대로).
+  // slots: 실제로 찍히는 순서 (숫자 = 쪽 번호(0부터), { blank, prev } = 자동 빈 쪽)
+  NP.printSlots = (doc, list) => {
+    const ix = list || doc.pages.map((_, i) => i), slots = [];
+    for (const i of ix) { const pg = doc.pages[i]; if (!list && pg && pg.sec && slots.length % 2 === 1) slots.push({ blank: true, prev: slots.length ? slots[slots.length - 1] : i }); slots.push(i); }
+    return slots;
+  };
+  NP.physIdx = (doc, idx) => { let pos = 0; for (let i = 0; i < doc.pages.length; i++) { if (i > 0 && doc.pages[i].sec && pos % 2 === 1) pos++; if (i === idx) return pos; pos++; } return idx; };
   NP.holeSide = (doc, pageIndex = 0) => {
     const side = doc && doc.holes && doc.holes.side;
-    return side === 'left' || side === 'right' ? side : (pageIndex % 2 === 0 ? 'left' : 'right');
+    return side === 'left' || side === 'right' ? side : (NP.physIdx(doc, pageIndex) % 2 === 0 ? 'left' : 'right');
   };
   NP.designArea = (doc, pageIndex = 0, master = false) => {
     const W = doc.page.w, H = doc.page.h, s = NP.safeOf(doc);
@@ -282,7 +291,7 @@
     if (!pn || !pn.on || !pg) return null;
     const ov = pg.num || {}; if (ov.off) return null;
     const hh = ov.h || pn.h, vv = ov.v || pn.v, W = doc.page.w, H = doc.page.h, area = NP.designArea(doc, idx), mL = Math.max(area.x, 4), mR = Math.max(W - area.x - area.w, 4), mT = Math.max(area.y, 4), mB = Math.max(H - area.y - area.h, 4), bw = 24, lineH = pn.pt * NP.MM_PT * 1.35;
-    const rightPage = idx % 2 === 0; // 1쪽·3쪽… 은 펼친 책의 오른쪽 페이지
+    const ph = NP.physIdx(doc, idx), rightPage = ph % 2 === 0; // 1쪽·3쪽… 은 펼친 책의 오른쪽 페이지 (자동 빈 쪽까지 센 실제 위치)
     let x, align;
     if (hh === 'center') { x = (W - bw) / 2; align = 'center'; } else if (rightPage) { x = W - mR - bw; align = 'right'; } else { x = mL; align = 'left'; }
     return { type: 'text', id: -1, x, y: vv === 'top' ? mT : H - mB - lineH, w: bw, text: String((pn.start || 1) + idx), pt: pn.pt, bold: false, align, font: pn.font || 'pretendard', color: pn.color || 'k100', lh: 0, rot: 0, lock: true, hide: false, gid: null };
